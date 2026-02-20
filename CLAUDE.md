@@ -1,133 +1,136 @@
 # Test Recorder — Chrome Extension
 
-## ¿Qué es este proyecto?
+> **Language rule:** All code, comments, variable names, and any content in this codebase must be written in **English**. This includes future code changes, new files, commit messages, and responses from Claude.
 
-Una extensión de Chrome (Manifest V3) que permite a usuarios **sin conocimiento técnico** grabar flujos de prueba en el browser y replicarlos automáticamente. Reemplaza a Puppeteer/Playwright, que son bloqueados por sitios con suscripción paga. La extensión corre en el browser real sin flags de automatización, por lo que no es detectable como bot.
+## What is this project?
 
-## ¿Por qué existe?
+A Chrome Extension (Manifest V3) that lets **non-technical users** record browser interactions and replay them automatically. It replaces Puppeteer/Playwright, which get blocked by paid-subscription sites. The extension runs in the real browser without automation flags, so it is undetectable as a bot.
 
-El equipo no tiene QA. Los usuarios necesitan:
-1. Grabar sus acciones con un click desde el side panel
-2. Replicar esas acciones automáticamente
-3. Ver todos los tests guardados, ejecutarlos uno a uno o todos en secuencia
+## Why does it exist?
 
-## Estructura de archivos
+The team has no QA. Users need to:
+1. Record their browser actions with one click from the side panel
+2. Replay those actions automatically
+3. View all saved tests, run them one by one or all in sequence
+
+## File structure
 
 ```
 extension/
-  manifest.json                  ← MV3, permisos, entry points
+  manifest.json                  ← MV3 manifest, permissions, entry points
   background/
-    service-worker.js            ← Orquestador principal: recording, replay, CDP, context menus
+    service-worker.js            ← Main orchestrator: recording, replay, CDP, context menus
   content/
-    recorder.js                  ← Inyectado dinámicamente durante grabación; captura eventos DOM
+    recorder.js                  ← Dynamically injected during recording; captures DOM events
   sidepanel/
-    sidepanel.html               ← UI principal (único entry point visual)
-    sidepanel.js                 ← Lógica de UI, mensajería con SW
+    sidepanel.html               ← Main UI (sole visual entry point)
+    sidepanel.js                 ← UI logic, messaging with SW
     sidepanel.css                ← Dark theme (default) + light theme toggle
   shared/
-    constants.js                 ← Tipos de mensajes (MSG), status codes, timeouts
-    storage.js                   ← Wrappers para chrome.storage.local
-    selector-resolver.js         ← Resuelve selectores con fallback (aria → css → xpath → pierce → text)
-    step-executor.js             ← Mapeo de cada step type a comandos CDP
+    constants.js                 ← Message types (MSG), status codes, timeouts
+    storage.js                   ← chrome.storage.local wrappers
+    selector-resolver.js         ← Resolves selectors with fallback (aria → css → xpath → pierce → text)
+    step-executor.js             ← Maps each step type to CDP commands
   assets/
     icon16/48/128.png
 ```
 
-## Flujo de grabación
+## Recording flow
 
-1. Usuario click "Iniciar grabación" → sidepanel envía `START_RECORDING` al SW con el `tabId`
-2. SW guarda la URL actual del tab como primer step (`navigate`) automáticamente
-3. SW inyecta `content/recorder.js` en el tab activo (todas las frames)
-4. `recorder.js` escucha: `click`, `mouseup`, `input`, `change`, `copy`, `paste`, `keydown`, `keyup`, `contextmenu`
-5. Cada evento → `chrome.runtime.sendMessage({ type: 'RECORD_STEP', payload: { step } })`
-6. El sidepanel recibe el mensaje directamente del content script y muestra la acción en el feed en tiempo real
-7. El SW también recibe el mensaje y guarda el step en `recordingState.steps`
-8. Al navegar a otra página: `webNavigation.onDOMContentLoaded` → SW graba step `navigate` con URL destino correcta + re-inyecta `recorder.js`
-9. Usuario click "Detener" → dialog para nombre → SW guarda en `chrome.storage.local`
+1. User clicks "Iniciar grabación" → sidepanel sends `START_RECORDING` to SW with `tabId`
+2. SW immediately records the current tab URL as the first step (`navigate`)
+3. SW injects `content/recorder.js` into the active tab (all frames)
+4. `recorder.js` listens for: `click`, `mouseup`, `input`, `change`, `copy`, `paste`, `keydown`, `keyup`, `contextmenu`
+5. Each event → `chrome.runtime.sendMessage({ type: 'RECORD_STEP', payload: { step } })`
+6. The sidepanel receives the message directly from the content script and renders it in the live feed
+7. The SW also receives it and pushes the step into `recordingState.steps`
+8. On page navigation: `webNavigation.onDOMContentLoaded` → SW records a `navigate` step with the correct destination URL + re-injects `recorder.js`
+9. User clicks "Detener" → name dialog → SW saves to `chrome.storage.local`
 
-**Importante:** Los steps de `navigate` se graban en el SW (desde `onDOMContentLoaded`), NO en el content script. El content script ya no usa `beforeunload` porque registraba la URL incorrecta (origen, no destino).
+**Important:** `navigate` steps are recorded by the SW (from `onDOMContentLoaded`), NOT by the content script. `beforeunload` is not used because it only knew the source URL, not the destination.
 
-## Flujo de replay
+## Replay flow
 
-1. Sidepanel envía `RUN_RECORDING` (o `RUN_ALL`) al SW
-2. SW: `chrome.debugger.attach({ tabId }, '1.3')` → habilita CDP
-3. Por cada step: `executeStep(step, tabId, ...)` → espera 400ms entre steps
-4. SW broadcastea `STEP_PROGRESS` → sidepanel actualiza progress bar en tiempo real
-5. Al terminar: `appendRunResult(result)` → `chrome.debugger.detach`
+1. Sidepanel sends `RUN_RECORDING` (or `RUN_ALL`) to SW
+2. SW: `chrome.debugger.attach({ tabId }, '1.3')` → enables CDP
+3. For each step: `executeStep(step, tabId, ...)` → waits 400ms between steps
+4. SW broadcasts `STEP_PROGRESS` → sidepanel updates the progress bar in real time
+5. On finish: `appendRunResult(result)` → `chrome.debugger.detach`
 
-## Tipos de steps y su ejecución CDP
+## Step types and CDP mapping
 
-| Step type | Acción CDP |
+| Step type | CDP action |
 |---|---|
-| `navigate` | `chrome.tabs.get` → si loading: espera `Page.loadEventFired`; si ya está en la URL: skip; si no: `Page.navigate` |
+| `navigate` | `chrome.tabs.get` → if loading: wait for `Page.loadEventFired`; if already at URL: skip; otherwise: `Page.navigate` |
 | `click` | `Input.dispatchMouseEvent` (moved → pressed → released) |
-| `doubleClick` | Igual que click con `clickCount: 2` |
+| `doubleClick` | Same as click with `clickCount: 2` |
 | `hover` | `Input.dispatchMouseEvent type:mouseMoved` |
-| `change` | focus + `Input.insertText` + dispatchEvent input/change |
+| `change` | focus + `Input.insertText` + dispatch input/change events |
 | `keyDown/keyUp` | `Input.dispatchKeyEvent` |
-| `waitForElement` | Polling `Runtime.evaluate` cada 500ms, timeout 30s |
-| `copy` | `Runtime.evaluate` para capturar texto seleccionado → guarda en `clipboardVars` Map del SW |
-| `paste` | Lee `clipboardVars[variableName]` → `Input.insertText` (funciona cross-site) |
+| `waitForElement` | Polling `Runtime.evaluate` every 500ms, 30s timeout |
+| `copy` | `Runtime.evaluate` to capture selected text → stored in SW's `clipboardVars` Map |
+| `paste` | Read `clipboardVars[variableName]` → `Input.insertText` (works cross-site) |
 | `scroll` | `Input.dispatchMouseEvent type:mouseWheel` |
 | `setViewport` | `Emulation.setDeviceMetricsOverride` |
 
-## Selectores (5 estrategias con fallback)
+## Selectors (5 strategies with fallback)
 
-Orden de prioridad en `selector-resolver.js`:
+Priority order in `selector-resolver.js`:
 1. `aria/<label>` — aria-label, aria-labelledby, label[for]
-2. CSS selector mínimo (`#id`, `[data-*]`, `[name=]`, tag+clase)
-3. `xpath/<expr>` — path relativo desde root
-4. `pierce/<css>` — CSS que penetra shadow DOM (recursivo)
-5. `text/<contenido>` — texto visible del elemento
+2. Minimal CSS selector (`#id`, `[data-*]`, `[name=]`, tag+class)
+3. `xpath/<expr>` — relative path from root
+4. `pierce/<css>` — CSS selector that pierces shadow DOM (recursive)
+5. `text/<content>` — visible text content match
 
-## Menú contextual (right-click durante grabación)
+## Context menu (right-click during recording)
 
-Dos opciones disponibles solo cuando hay grabación activa:
-- **Registrar Hover** → graba step `hover` sobre el elemento bajo el cursor
-- **Esperar elemento** → graba step `waitForElement` sobre el elemento bajo el cursor
+Two options, only available when a recording is active:
+- **Registrar Hover** → records a `hover` step on the element under the cursor
+- **Esperar elemento** → records a `waitForElement` step on the element under the cursor
 
-El content script envía la info del elemento via `STORE_CONTEXT_EL` al SW. El SW almacena en `lastContextMenuEl` y lo consume cuando el usuario elige la opción del menú.
+The content script sends element info via `STORE_CONTEXT_EL` to the SW. The SW stores it in `lastContextMenuEl` and consumes it when the user selects a menu option.
 
-## Mensajes (constants.js)
+## Messages (constants.js)
 
 ```js
 // sidepanel → SW
 START_RECORDING, STOP_RECORDING, ABORT_RECORDING
 RUN_RECORDING, RUN_ALL, ABORT_RUN
 GET_RECORDINGS, GET_HISTORY
-DELETE_RECORDING, DELETE_STEP   // DELETE_STEP elimina un step por índice durante grabación
+DELETE_RECORDING
+DELETE_STEP    // removes a step by index during recording (splice from recordingState.steps)
 
 // content script → SW
-STORE_CONTEXT_EL   // info del elemento con right-click
-RECORD_STEP        // step capturado (también llega directo al sidepanel)
+STORE_CONTEXT_EL   // element info from right-click (for context menu handler)
+RECORD_STEP        // captured step (also delivered directly to sidepanel)
 
 // SW → sidepanel (broadcasts)
-RECORD_STEP        // step grabado por el SW (hover, navigate)
-STEP_PROGRESS      // progreso de replay
-RUN_COMPLETE       // run terminado (passed/failed)
-BATCH_PROGRESS     // batch: avanzó al siguiente recording
-BATCH_COMPLETE     // batch: todos terminados
-RECORDING_STATE    // confirmación de stop/abort
+RECORD_STEP        // step created by SW itself (hover, navigate)
+STEP_PROGRESS      // replay progress update
+RUN_COMPLETE       // single run finished (passed/failed)
+BATCH_PROGRESS     // batch: moved to next recording
+BATCH_COMPLETE     // batch: all recordings done
+RECORDING_STATE    // confirmation of stop/abort
 ```
 
-## Estado en memoria del SW
+## SW in-memory state
 
 ```js
-recordingState = { active: bool, tabId: number, steps: Step[] }
-replayState    = { active: bool, aborted: bool, tabId: number }
-clipboardVars  = Map<variableName, copiedText>   // persiste durante un run completo
-frameContextMap = Map<frameId, executionContextId>
-lastContextMenuEl = { selectors, offsetX, offsetY, frame }  // del último right-click
+recordingState    = { active: bool, tabId: number, steps: Step[] }
+replayState       = { active: bool, aborted: bool, tabId: number }
+clipboardVars     = Map<variableName, copiedText>   // persists across the entire run (cross-site safe)
+frameContextMap   = Map<frameId, executionContextId>
+lastContextMenuEl = { selectors, offsetX, offsetY, frame }  // last right-clicked element
 ```
 
-## Modelo de datos (chrome.storage.local)
+## Data model (chrome.storage.local)
 
 **recordings** — `Recording[]`
 ```js
 { id: string, title: string, createdAt: ISO, steps: Step[] }
 ```
 
-**runHistory** — `RunResult[]` (máximo 100 entradas)
+**runHistory** — `RunResult[]` (max 100 entries)
 ```js
 {
   runId, recordingId, recordingTitle,
@@ -139,18 +142,18 @@ lastContextMenuEl = { selectors, offsetX, offsetY, frame }  // del último right
 }
 ```
 
-## Detalles técnicos importantes
+## Key technical details
 
-- **Service worker keep-alive**: `chrome.alarms` cada ~24s durante runs largos (`KEEPALIVE_MINS = 0.4`)
-- **Double-injection guard**: `window.__recorderActive` en el content script; `startRecording` siempre hace cleanup antes de re-inyectar
-- **Deduplicación de steps**: ventana de 200ms en `sendStep()` de `recorder.js` (evita clicks dobles por label→input)
-- **RECORD_STEP no se re-broadcastea**: el sidepanel ya lo recibe directamente del content script. Solo se broadcastea para steps creados en el SW (hover, navigate)
-- **400ms entre steps**: el loop de replay tiene `await new Promise(r => setTimeout(r, 400))` después de cada step exitoso
-- **Eliminar step durante grabación**: sidepanel envía `DELETE_STEP { index }` → SW hace `splice(index, 1)` en `recordingState.steps`
+- **SW keep-alive**: `chrome.alarms` fires every ~24s during long runs (`KEEPALIVE_MINS = 0.4`)
+- **Double-injection guard**: `window.__recorderActive` flag in content script; `startRecording` always cleans up before re-injecting
+- **Step deduplication**: 200ms window in `sendStep()` in `recorder.js` (prevents double-registration from label→input synthetic clicks)
+- **RECORD_STEP is not re-broadcast**: the sidepanel already receives it directly from the content script. It is only broadcast for steps created inside the SW (hover, navigate)
+- **400ms gap between steps**: the replay loop does `await new Promise(r => setTimeout(r, 400))` after each successful step
+- **Delete step during recording**: sidepanel sends `DELETE_STEP { index }` → SW does `splice(index, 1)` on `recordingState.steps`; sidepanel removes the `<li>` from the feed and decrements the step counter
 
-## Cargar la extensión
+## Loading the extension
 
-1. Ir a `chrome://extensions`
-2. Activar "Modo desarrollador"
-3. "Cargar descomprimida" → seleccionar carpeta `extension/`
-4. El icono aparece en la toolbar; click abre el side panel
+1. Go to `chrome://extensions`
+2. Enable "Developer mode"
+3. Click "Load unpacked" → select the `extension/` folder
+4. The icon appears in the toolbar; clicking it opens the side panel
