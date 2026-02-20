@@ -160,8 +160,18 @@ async function startRecording(tabId) {
     });
   } catch (_) { /* tab may not be ready yet, proceed anyway */ }
 
-  recordingState = { active: true, tabId, steps: [] };
+  // Record the starting URL as the first step so replay always begins on the right page
+  const tab = await chrome.tabs.get(tabId);
+  const startUrl = tab.url ?? '';
+  const firstStep = {
+    type: 'navigate',
+    url: startUrl,
+    assertedEvents: [{ type: 'navigation', url: startUrl, title: '' }],
+  };
+
+  recordingState = { active: true, tabId, steps: [firstStep] };
   startKeepalive();
+  broadcast(MSG.RECORD_STEP, { step: firstStep });
 
   // Inject recorder content script
   await chrome.scripting.executeScript({
@@ -379,7 +389,7 @@ chrome.action.onClicked.addListener(async tab => {
   await chrome.sidePanel.open({ tabId: tab.id });
 });
 
-// ── Context menu: "Registrar Hover" ───────────────────────────────────────────
+// ── Context menu: "Registrar Hover" + "Esperar elemento" ──────────────────────
 // Create once on SW startup (removeAll first to avoid duplicates on reload)
 chrome.contextMenus.removeAll(() => {
   chrome.contextMenus.create({
@@ -387,25 +397,40 @@ chrome.contextMenus.removeAll(() => {
     title: 'Registrar Hover',
     contexts: ['all'],
   });
+  chrome.contextMenus.create({
+    id: 'record-wait',
+    title: 'Esperar elemento',
+    contexts: ['all'],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener((_info, tab) => {
-  if (_info.menuItemId !== 'record-hover') return;
   if (!recordingState.active || tab.id !== recordingState.tabId) return;
+  if (_info.menuItemId !== 'record-hover' && _info.menuItemId !== 'record-wait') return;
 
   // Use the element info stored by the content script via STORE_CONTEXT_EL message.
   const elInfo = lastContextMenuEl;
   if (!elInfo) return;
   lastContextMenuEl = null; // consume it
 
-  const step = {
-    type: 'hover',
-    target: 'main',
-    selectors: elInfo.selectors,
-    offsetX: elInfo.offsetX,
-    offsetY: elInfo.offsetY,
-    ...(elInfo.frame?.length ? { frame: elInfo.frame } : {}),
-  };
+  let step;
+  if (_info.menuItemId === 'record-hover') {
+    step = {
+      type: 'hover',
+      target: 'main',
+      selectors: elInfo.selectors,
+      offsetX: elInfo.offsetX,
+      offsetY: elInfo.offsetY,
+      ...(elInfo.frame?.length ? { frame: elInfo.frame } : {}),
+    };
+  } else {
+    step = {
+      type: 'waitForElement',
+      target: 'main',
+      selectors: elInfo.selectors,
+      ...(elInfo.frame?.length ? { frame: elInfo.frame } : {}),
+    };
+  }
 
   recordingState.steps.push(step);
   broadcast(MSG.RECORD_STEP, { step });
