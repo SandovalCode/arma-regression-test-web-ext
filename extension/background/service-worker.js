@@ -1,4 +1,4 @@
-import { MSG, RecordingState, KEEPALIVE_MINS, MAX_HISTORY_ENTRIES } from '../shared/constants.js';
+import { MSG, KEEPALIVE_MINS } from '../shared/constants.js';
 import { getRecordings, saveRecording, deleteRecording, appendRunResult, getRunHistory } from '../shared/storage.js';
 import { executeStep } from '../shared/step-executor.js';
 
@@ -21,6 +21,9 @@ let clipboardVars = new Map();
 // Execution context map: frameId → executionContextId (populated via Runtime events)
 let frameContextMap = new Map();
 
+// Last right-clicked element sent from the content script via STORE_CONTEXT_EL
+let lastContextMenuEl = null;
+
 // ── CDP helper ─────────────────────────────────────────────────────────────────
 function cdp(tabId, method, params = {}) {
   return chrome.debugger.sendCommand({ tabId }, method, params);
@@ -32,7 +35,7 @@ function broadcast(type, payload = {}) {
 }
 
 // ── Debugger event listener ────────────────────────────────────────────────────
-chrome.debugger.onEvent.addListener((source, method, params) => {
+chrome.debugger.onEvent.addListener((_source, method, params) => {
   if (method === 'Runtime.executionContextCreated') {
     const ctx = params.context;
     if (ctx.auxData?.frameId) {
@@ -41,7 +44,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   }
 });
 
-chrome.debugger.onDetach.addListener((source, reason) => {
+chrome.debugger.onDetach.addListener((source, _reason) => {
   if (source.tabId === replayState.tabId) {
     replayState.aborted = true;
   }
@@ -121,6 +124,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
 
       // ── Called from content script during recording ──
+      case MSG.STORE_CONTEXT_EL:
+        // Content script sends the right-clicked element info here so the
+        // context menu handler can use it without a fragile executeScript call.
+        if (recordingState.active) lastContextMenuEl = payload;
+        break;
+
       case MSG.RECORD_STEP:
         if (recordingState.active && payload.step) {
           recordingState.steps.push(payload.step);
@@ -151,6 +160,7 @@ async function startRecording(tabId) {
   } catch (_) { /* tab may not be ready yet, proceed anyway */ }
 
   recordingState = { active: true, tabId, steps: [] };
+  startKeepalive();
 
   // Inject recorder content script
   await chrome.scripting.executeScript({
@@ -177,6 +187,7 @@ async function stopRecording(name, sendResponse) {
   if (!recordingState.active) { sendResponse({ ok: false }); return; }
 
   recordingState.active = false;
+  stopKeepalive();
   chrome.webNavigation?.onCommitted?.removeListener(onNavCommitted);
 
   // Remove the recorder script from the tab by calling cleanup
@@ -195,6 +206,7 @@ async function stopRecording(name, sendResponse) {
 
 async function abortRecording() {
   recordingState.active = false;
+  stopKeepalive();
   chrome.webNavigation?.onCommitted?.removeListener(onNavCommitted);
   try {
     await chrome.scripting.executeScript({
@@ -357,21 +369,14 @@ chrome.contextMenus.removeAll(() => {
   });
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId !== 'record-hover') return;
+chrome.contextMenus.onClicked.addListener((_info, tab) => {
+  if (_info.menuItemId !== 'record-hover') return;
   if (!recordingState.active || tab.id !== recordingState.tabId) return;
 
-  // Ask the content script for the element that was right-clicked
-  let results;
-  try {
-    results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id, frameId: info.frameId },
-      func: () => window.__lastContextMenuEl ?? null,
-    });
-  } catch (_) { return; }
-
-  const elInfo = results?.[0]?.result;
+  // Use the element info stored by the content script via STORE_CONTEXT_EL message.
+  const elInfo = lastContextMenuEl;
   if (!elInfo) return;
+  lastContextMenuEl = null; // consume it
 
   const step = {
     type: 'hover',

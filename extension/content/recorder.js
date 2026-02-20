@@ -16,10 +16,20 @@
   let lastSelectionEl = null;
   let lastCopiedVarName = null;
   let pendingInputChange = null;  // debounce: fire change step only on blur/change
-  let lastNavigationUrl = location.href;
-
+  
   // ── Send a step to the service worker ────────────────────────────────────────
+  let _lastStepKey = '';
+  let _lastStepTime = 0;
+
   function sendStep(step) {
+    // Deduplicate: ignore identical step type + selector within 200ms.
+    // Covers label→input synthetic clicks, allFrames double-injection edge cases, etc.
+    const key = step.type + '|' + (step.selectors?.[0]?.[0] ?? '') + '|' + (step.value ?? '') + '|' + (step.key ?? '');
+    const now = Date.now();
+    if (key === _lastStepKey && now - _lastStepTime < 200) return;
+    _lastStepKey = key;
+    _lastStepTime = now;
+
     chrome.runtime.sendMessage({ type: 'RECORD_STEP', payload: { step } });
   }
 
@@ -202,7 +212,7 @@
   }
 
   // Copy event — covers Ctrl+C, Cmd+C, and right-click → Copy
-  function handleCopy(e) {
+  function handleCopy(_e) {
     const sel = window.getSelection()?.toString() ?? lastSelection ?? '';
     const activeEl = document.activeElement;
 
@@ -231,7 +241,7 @@
   }
 
   // Paste event — Ctrl+V, Cmd+V, and right-click → Paste
-  function handlePaste(e) {
+  function handlePaste(_e) {
     const el = document.activeElement;
     sendStep({
       type: 'paste',
@@ -266,20 +276,25 @@
     sendStep({ type: 'keyUp', target: 'main', key: e.key, ...frameInfo });
   }
 
-  // Navigation (beforeunload fires just before page leaves)
-  // Right-click: store the target element so the SW can read it when
-  // the user picks "Registrar Hover" from the context menu.
+  // Right-click: send the element info directly to the SW via message.
+  // Using a message is more reliable than window.__lastContextMenuEl because
+  // a later executeScript call runs in a different execution context in MV3.
   function handleContextMenu(e) {
     const el = e.target;
     if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
     const rect = el.getBoundingClientRect();
-    window.__lastContextMenuEl = {
-      selectors: generateSelectors(el),
-      offsetX: Math.max(0, Math.round(e.clientX - rect.left)),
-      offsetY: Math.max(0, Math.round(e.clientY - rect.top)),
-      frame: getFrameIndex(),
-    };
+    chrome.runtime.sendMessage({
+      type: 'STORE_CONTEXT_EL',
+      payload: {
+        selectors: generateSelectors(el),
+        offsetX: Math.max(0, Math.round(e.clientX - rect.left)),
+        offsetY: Math.max(0, Math.round(e.clientY - rect.top)),
+        frame: getFrameIndex(),
+      },
+    });
   }
+
+  // Navigation (beforeunload fires just before page leaves)
 
   function handleBeforeUnload() {
     sendStep({
