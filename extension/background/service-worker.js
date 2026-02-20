@@ -133,7 +133,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case MSG.RECORD_STEP:
         if (recordingState.active && payload.step) {
           recordingState.steps.push(payload.step);
-          broadcast(MSG.RECORD_STEP, { step: payload.step });
+          // No re-broadcast: sidepanel already receives this message directly from the content script.
+          // (Hover steps created in the SW are broadcast separately via the context menu handler.)
         }
         break;
 
@@ -169,18 +170,20 @@ async function startRecording(tabId) {
   });
 
   // Also inject on future navigations within this tab
-  chrome.webNavigation?.onCommitted?.addListener(onNavCommitted);
+  chrome.webNavigation.onDOMContentLoaded.addListener(onNavCommitted);
 }
 
 async function onNavCommitted(details) {
   if (!recordingState.active || details.tabId !== recordingState.tabId) return;
-  // Re-inject recorder after navigation
+  if (details.frameId !== 0) return; // only re-inject on main-frame navigations
   try {
     await chrome.scripting.executeScript({
-      target: { tabId: details.tabId, frameId: details.frameId, allFrames: false },
+      target: { tabId: details.tabId, allFrames: true },
       files: ['content/recorder.js'],
     });
-  } catch (_) { /* frame may not be ready yet */ }
+  } catch (err) {
+    console.warn('[Recorder] Re-inject after nav failed:', err.message);
+  }
 }
 
 async function stopRecording(name, sendResponse) {
@@ -188,7 +191,7 @@ async function stopRecording(name, sendResponse) {
 
   recordingState.active = false;
   stopKeepalive();
-  chrome.webNavigation?.onCommitted?.removeListener(onNavCommitted);
+  chrome.webNavigation.onDOMContentLoaded.removeListener(onNavCommitted);
 
   // Remove the recorder script from the tab by calling cleanup
   try {
@@ -207,7 +210,7 @@ async function stopRecording(name, sendResponse) {
 async function abortRecording() {
   recordingState.active = false;
   stopKeepalive();
-  chrome.webNavigation?.onCommitted?.removeListener(onNavCommitted);
+  chrome.webNavigation.onDOMContentLoaded.removeListener(onNavCommitted);
   try {
     await chrome.scripting.executeScript({
       target: { tabId: recordingState.tabId, allFrames: true },

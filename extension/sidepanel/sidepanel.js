@@ -348,6 +348,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
   switch (type) {
     case MSG.RECORD_STEP:
+      if (state.mode !== RecordingState.RECORDING) break;
       state.recordingStepCount++;
       stepCountEl.textContent = state.recordingStepCount;
       appendFeedItem(payload.step);
@@ -362,7 +363,7 @@ chrome.runtime.onMessage.addListener((msg) => {
       break;
 
     case MSG.RUN_COMPLETE: {
-      const { passed, failedStep, recordingId } = payload;
+      const { passed, failedStep } = payload;
       progressBar.style.width = '100%';
       runTitle.textContent = passed ? '✅ Prueba completada' : '❌ Prueba fallida';
       if (!passed && failedStep) {
