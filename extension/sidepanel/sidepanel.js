@@ -65,16 +65,16 @@ function timeAgo(isoStr) {
   if (!isoStr) return '';
   const diff = Date.now() - new Date(isoStr).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1)  return 'hace un momento';
-  if (m < 60) return `hace ${m} min`;
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `hace ${h}h`;
-  return `hace ${Math.floor(h / 24)}d`;
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 function formatDate(isoStr) {
   if (!isoStr) return '';
-  return new Date(isoStr).toLocaleDateString('es', { day: '2-digit', month: 'short' });
+  return new Date(isoStr).toLocaleDateString('en', { day: '2-digit', month: 'short' });
 }
 
 // ── Render recordings list ─────────────────────────────────────────────────────
@@ -99,21 +99,21 @@ function renderRecordings(recordings) {
     const lastRun = rec.lastRun;
     const badgeHtml = lastRun
       ? `<span class="badge ${lastRun.passed ? 'badge-pass' : 'badge-fail'}">
-           ${lastRun.passed ? '✅ PASS' : '❌ FALLO'}
+           ${lastRun.passed ? '✅ PASS' : '❌ FAIL'}
          </span>
-         <span>${lastRun.completedSteps}/${lastRun.totalSteps} pasos · ${timeAgo(lastRun.completedAt)}</span>`
-      : `<span class="badge badge-none">Sin ejecutar</span>`;
+         <span>${lastRun.completedSteps}/${lastRun.totalSteps} steps · ${timeAgo(lastRun.completedAt)}</span>`
+      : `<span class="badge badge-none">Not run</span>`;
 
     li.innerHTML = `
       <div class="recording-card-header">
         <div>
           <div class="recording-title">${escapeHtml(rec.title)}</div>
-          <div class="recording-meta">${rec.steps?.length ?? 0} pasos · ${formatDate(rec.createdAt)}</div>
+          <div class="recording-meta">${rec.steps?.length ?? 0} steps · ${formatDate(rec.createdAt)}</div>
         </div>
       </div>
       <div class="last-run">${badgeHtml}</div>
       <div class="recording-card-actions">
-        <button class="btn btn-primary btn-sm btn-run" data-id="${rec.id}">▶ Correr</button>
+        <button class="btn btn-primary btn-sm btn-run" data-id="${rec.id}">▶ Run</button>
         <button class="btn btn-ghost btn-sm btn-delete" data-id="${rec.id}">🗑</button>
       </div>
     `;
@@ -130,7 +130,7 @@ function addOrUpdateStep({ stepIndex, total, status, stepType, durationMs, error
   // update progress bar
   const pct = total > 0 ? Math.round(((stepIndex + 1) / total) * 100) : 0;
   progressBar.style.width = `${pct}%`;
-  runSubtitle.textContent = `Paso ${stepIndex + 1} de ${total}`;
+  runSubtitle.textContent = `Step ${stepIndex + 1} of ${total}`;
 
   // update or create step item
   let li = stepsList.querySelector(`[data-step="${stepIndex}"]`);
@@ -179,7 +179,7 @@ function setMode(mode) {
 }
 
 function showRunSection(title) {
-  runTitle.textContent = `Corriendo: "${title}"`;
+  runTitle.textContent = `Running: "${title}"`;
   runSubtitle.textContent = '';
   progressBar.style.width = '0%';
   stepsList.innerHTML = '';
@@ -187,8 +187,6 @@ function showRunSection(title) {
   batchSection.classList.add('hidden');
   setMode(RecordingState.REPLAYING);
 }
-
-// ── Event listeners ────────────────────────────────────────────────────────────
 
 // ── Step label helpers ─────────────────────────────────────────────────────────
 const STEP_ICONS = {
@@ -216,25 +214,25 @@ function stepLabel(step) {
   switch (step.type) {
     case 'click':
     case 'doubleClick':
-      return { main: step.type === 'doubleClick' ? 'Doble click' : 'Click', sub: selectorHint };
+      return { main: step.type === 'doubleClick' ? 'Double click' : 'Click', sub: selectorHint };
     case 'hover':
       return { main: 'Hover', sub: selectorHint };
     case 'change':
-      return { main: 'Escribir', sub: `"${String(step.value ?? '').slice(0, 30)}"` };
+      return { main: 'Type', sub: `"${String(step.value ?? '').slice(0, 30)}"` };
     case 'navigate':
-      return { main: 'Navegar', sub: (step.url ?? '').replace(/^https?:\/\//, '').slice(0, 40) };
+      return { main: 'Navigate', sub: (step.url ?? '').replace(/^https?:\/\//, '').slice(0, 40) };
     case 'keyDown':
-      return { main: `Tecla ↓ ${step.key}`, sub: '' };
+      return { main: `Key ↓ ${step.key}`, sub: '' };
     case 'keyUp':
-      return { main: `Tecla ↑ ${step.key}`, sub: '' };
+      return { main: `Key ↑ ${step.key}`, sub: '' };
     case 'copy':
-      return { main: 'Copiar', sub: `"${String(step.snapshotValue ?? '').slice(0, 30)}"` };
+      return { main: 'Copy', sub: `"${String(step.snapshotValue ?? '').slice(0, 30)}"` };
     case 'paste':
-      return { main: 'Pegar', sub: selectorHint };
+      return { main: 'Paste', sub: selectorHint };
     case 'scroll':
       return { main: 'Scroll', sub: '' };
     case 'waitForElement':
-      return { main: 'Esperar elemento', sub: selectorHint };
+      return { main: 'Wait for element', sub: selectorHint };
     case 'setViewport':
       return { main: `Viewport ${step.width}×${step.height}`, sub: '' };
     default:
@@ -251,7 +249,7 @@ function appendFeedItem(step) {
     <span class="record-feed-icon">${icon}</span>
     <span class="record-feed-label">${escapeHtml(main)}</span>
     ${sub ? `<span class="record-feed-sub">${escapeHtml(sub)}</span>` : ''}
-    <button class="btn-delete-step" title="Eliminar acción">×</button>
+    <button class="btn-delete-step" title="Delete action">×</button>
   `;
   recordFeed.appendChild(li);
   li.scrollIntoView({ block: 'nearest' });
@@ -275,7 +273,7 @@ recordFeed.addEventListener('click', async e => {
 // Start recording
 btnStartRecord.addEventListener('click', async () => {
   const tabId = await getActiveTabId();
-  if (!tabId) return alert('No hay una pestaña activa.');
+  if (!tabId) return alert('No active tab found.');
   state.recordingStepCount = 0;
   stepCountEl.textContent = '0';
   recordFeed.innerHTML = '';   // clear feed from previous session
@@ -322,7 +320,7 @@ function showNameDialog() {
 // Run All
 btnRunAll.addEventListener('click', async () => {
   const tabId = await getActiveTabId();
-  if (!tabId) return alert('No hay una pestaña activa.');
+  if (!tabId) return alert('No active tab found.');
   batchResults.innerHTML = '';
   batchSummary.textContent = '';
   batchSection.classList.add('hidden');
@@ -341,7 +339,7 @@ recordingsList.addEventListener('click', async e => {
 
   if (runBtn) {
     const tabId = await getActiveTabId();
-    if (!tabId) return alert('No hay una pestaña activa.');
+    if (!tabId) return alert('No active tab found.');
     const rec = state.recordings.find(r => r.id === runBtn.dataset.id);
     if (!rec) return;
     stepsList.innerHTML = '';
@@ -350,7 +348,7 @@ recordingsList.addEventListener('click', async e => {
   }
 
   if (deleteBtn) {
-    if (!confirm('¿Eliminar esta prueba?')) return;
+    if (!confirm('Delete this test?')) return;
     await send(MSG.DELETE_RECORDING, { recordingId: deleteBtn.dataset.id });
     await loadRecordings();
   }
@@ -379,9 +377,9 @@ chrome.runtime.onMessage.addListener((msg) => {
     case MSG.RUN_COMPLETE: {
       const { passed, failedStep } = payload;
       progressBar.style.width = '100%';
-      runTitle.textContent = passed ? '✅ Prueba completada' : '❌ Prueba fallida';
+      runTitle.textContent = passed ? '✅ Test passed' : '❌ Test failed';
       if (!passed && failedStep) {
-        runSubtitle.textContent = `Falló en el paso ${failedStep.index + 1}: ${failedStep.type}`;
+        runSubtitle.textContent = `Failed at step ${failedStep.index + 1}: ${failedStep.type}`;
       }
       setMode(RecordingState.IDLE);
       loadRecordings();
@@ -391,14 +389,14 @@ chrome.runtime.onMessage.addListener((msg) => {
     case MSG.BATCH_PROGRESS: {
       const { current, total, recordingTitle } = payload;
       showRunSection(recordingTitle);
-      runSubtitle.textContent = `Prueba ${current} de ${total}`;
+      runSubtitle.textContent = `Test ${current} of ${total}`;
       break;
     }
 
     case MSG.BATCH_COMPLETE: {
       const { results } = payload;
       const passed = results.filter(r => r.passed).length;
-      batchSummary.textContent = `${passed} de ${results.length} pruebas pasaron`;
+      batchSummary.textContent = `${passed} of ${results.length} tests passed`;
       batchResults.innerHTML = results.map(r =>
         `<li class="batch-item">
           <span>${r.passed ? '✅' : '❌'}</span>

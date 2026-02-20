@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Test Recorder",
   "version": "1.0.0",
-  "description": "Graba y replica flujos de prueba en el browser sin necesidad de conocimiento técnico.",
+  "description": "Record and replay browser test flows without any technical knowledge required.",
   "minimum_chrome_version": "114",
 
   "permissions": [

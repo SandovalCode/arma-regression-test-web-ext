@@ -400,17 +400,17 @@ chrome.action.onClicked.addListener(async tab => {
   await chrome.sidePanel.open({ tabId: tab.id });
 });
 
-// ── Context menu: "Registrar Hover" + "Esperar elemento" ──────────────────────
+// ── Context menu: "Record Hover" + "Wait for element" ─────────────────────────
 // Create once on SW startup (removeAll first to avoid duplicates on reload)
 chrome.contextMenus.removeAll(() => {
   chrome.contextMenus.create({
     id: 'record-hover',
-    title: 'Registrar Hover',
+    title: 'Record Hover',
     contexts: ['all'],
   });
   chrome.contextMenus.create({
     id: 'record-wait',
-    title: 'Esperar elemento',
+    title: 'Wait for element',
     contexts: ['all'],
   });
 });
