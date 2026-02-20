@@ -168,6 +168,23 @@ section {
 .record-feed-icon { flex-shrink: 0; }
 .record-feed-label { color: var(--text); flex: 1; word-break: break-all; }
 .record-feed-sub { color: var(--muted); font-size: 11px; }
+.btn-delete-step {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.btn-delete-step:hover { color: var(--red); background: rgba(239,68,68,0.1); }
+.record-feed-item:hover .btn-delete-step { display: flex; }
 
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateY(-4px); }

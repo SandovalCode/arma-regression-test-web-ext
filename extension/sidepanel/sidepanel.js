@@ -251,10 +251,24 @@ function appendFeedItem(step) {
     <span class="record-feed-icon">${icon}</span>
     <span class="record-feed-label">${escapeHtml(main)}</span>
     ${sub ? `<span class="record-feed-sub">${escapeHtml(sub)}</span>` : ''}
+    <button class="btn-delete-step" title="Eliminar acción">×</button>
   `;
   recordFeed.appendChild(li);
   li.scrollIntoView({ block: 'nearest' });
 }
+
+// Delete a step from the feed and from the SW recording state
+recordFeed.addEventListener('click', async e => {
+  const btn = e.target.closest('.btn-delete-step');
+  if (!btn) return;
+  const li = btn.closest('.record-feed-item');
+  const index = Array.from(recordFeed.children).indexOf(li);
+  if (index < 0) return;
+  await send(MSG.DELETE_STEP, { index });
+  li.remove();
+  state.recordingStepCount = Math.max(0, state.recordingStepCount - 1);
+  stepCountEl.textContent = state.recordingStepCount;
+});
 
 // ── Event listeners ────────────────────────────────────────────────────────────
 

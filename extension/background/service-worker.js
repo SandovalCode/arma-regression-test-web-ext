@@ -123,6 +123,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: true });
         break;
 
+      case MSG.DELETE_STEP: {
+        const idx = payload.index;
+        if (recordingState.active && idx >= 0 && idx < recordingState.steps.length) {
+          recordingState.steps.splice(idx, 1);
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ ok: false });
+        }
+        break;
+      }
+
       // ── Called from content script during recording ──
       case MSG.STORE_CONTEXT_EL:
         // Content script sends the right-clicked element info here so the
