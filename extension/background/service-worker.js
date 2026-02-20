@@ -175,7 +175,23 @@ async function startRecording(tabId) {
 
 async function onNavCommitted(details) {
   if (!recordingState.active || details.tabId !== recordingState.tabId) return;
-  if (details.frameId !== 0) return; // only re-inject on main-frame navigations
+  if (details.frameId !== 0) return; // only main-frame navigations
+
+  // Skip internal browser URLs
+  const url = details.url ?? '';
+  if (!url || url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('about:')) return;
+
+  // Record a navigate step with the CORRECT destination URL
+  // (details.url is where we're arriving, not where we came from)
+  const step = {
+    type: 'navigate',
+    url,
+    assertedEvents: [{ type: 'navigation', url, title: '' }],
+  };
+  recordingState.steps.push(step);
+  broadcast(MSG.RECORD_STEP, { step });
+
+  // Re-inject recorder into the new page
   try {
     await chrome.scripting.executeScript({
       target: { tabId: details.tabId, allFrames: true },
@@ -257,6 +273,7 @@ async function runRecording(recording, tabId) {
 
       try {
         await executeStep(step, tabId, frameContextMap, clipboardVars, cdp);
+        await new Promise(r => setTimeout(r, 100)); // 100 ms gap between actions
 
         const durationMs = Date.now() - stepStart;
         stepResults.push({ index: i, type: step.type, status: 'passed', durationMs });

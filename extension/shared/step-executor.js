@@ -35,7 +35,7 @@ export async function executeStep(step, tabId, frameContextMap, clipboardVars, c
 
 // ── Context resolution ─────────────────────────────────────────────────────────
 
-function resolveContext(step, frameContextMap) {
+function resolveContext(step, _frameContextMap) {
   if (!step.frame || step.frame.length === 0) return null;
   // The frameContextMap is keyed by frameId strings.
   // We can't easily map frame index arrays to frameIds here without querying
@@ -59,11 +59,41 @@ async function execSetViewport(step, tabId, cdp) {
 // ── navigate ───────────────────────────────────────────────────────────────────
 
 async function execNavigate(step, tabId, cdp) {
+  const targetUrl = step.url ?? '';
+
+  // Check if the tab is already navigating (e.g., a preceding click step triggered it)
+  // or already at the target URL. Use chrome.tabs.get — available in the SW context.
+  const tab = await chrome.tabs.get(tabId);
+
+  if (tab.status === 'loading') {
+    // Navigation already in progress — wait for it to complete instead of
+    // calling Page.navigate again (which would interrupt the ongoing load).
+    await waitForNavigation(tabId, NAV_TIMEOUT_MS);
+    await sleep(300);
+    return;
+  }
+
+  if (targetUrl && normalizeUrl(tab.url ?? '') === normalizeUrl(targetUrl)) {
+    // Already at the target URL and fully loaded — nothing to do.
+    await sleep(300);
+    return;
+  }
+
+  // Explicit navigation needed (e.g., address-bar navigation recorded without a click).
   const navPromise = waitForNavigation(tabId, NAV_TIMEOUT_MS);
-  await cdp(tabId, 'Page.navigate', { url: step.url });
+  await cdp(tabId, 'Page.navigate', { url: targetUrl });
   await navPromise;
   // Small settle delay for JS frameworks to initialise
   await sleep(300);
+}
+
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
 }
 
 function waitForNavigation(tabId, timeoutMs) {

@@ -294,17 +294,9 @@
     });
   }
 
-  // Navigation (beforeunload fires just before page leaves)
-
-  function handleBeforeUnload() {
-    sendStep({
-      type: 'navigate',
-      url: location.href,
-      assertedEvents: [{ type: 'navigation', url: location.href, title: '' }],
-    });
-  }
-
   // ── Register listeners ────────────────────────────────────────────────────────
+  // Note: navigate steps are recorded by the service worker via webNavigation.onDOMContentLoaded,
+  // which captures the correct destination URL. beforeunload is not used here.
   document.addEventListener('click',       handleClick,       { capture: true });
   document.addEventListener('mouseup',     handleMouseUp,     { capture: true });
   document.addEventListener('input',       handleInput,       { capture: true });
@@ -314,20 +306,18 @@
   document.addEventListener('keydown',     handleKeyDown,     { capture: true });
   document.addEventListener('keyup',       handleKeyUp,       { capture: true });
   document.addEventListener('contextmenu', handleContextMenu, { capture: true });
-  window.addEventListener('beforeunload',  handleBeforeUnload);
 
   // ── Cleanup function (called by service worker on stop/abort) ─────────────────
   window.__recorderCleanup = function () {
-    document.removeEventListener('click',      handleClick,     { capture: true });
-    document.removeEventListener('mouseup',    handleMouseUp,   { capture: true });
-    document.removeEventListener('input',      handleInput,     { capture: true });
-    document.removeEventListener('change',     handleChange,    { capture: true });
-    document.removeEventListener('copy',       handleCopy,      { capture: true });
-    document.removeEventListener('paste',      handlePaste,     { capture: true });
+    document.removeEventListener('click',       handleClick,       { capture: true });
+    document.removeEventListener('mouseup',     handleMouseUp,     { capture: true });
+    document.removeEventListener('input',       handleInput,       { capture: true });
+    document.removeEventListener('change',      handleChange,      { capture: true });
+    document.removeEventListener('copy',        handleCopy,        { capture: true });
+    document.removeEventListener('paste',       handlePaste,       { capture: true });
     document.removeEventListener('keydown',     handleKeyDown,     { capture: true });
     document.removeEventListener('keyup',       handleKeyUp,       { capture: true });
     document.removeEventListener('contextmenu', handleContextMenu, { capture: true });
-    window.removeEventListener('beforeunload',  handleBeforeUnload);
     window.__lastContextMenuEl = null;
     window.__recorderActive = false;
     window.__recorderCleanup = null;

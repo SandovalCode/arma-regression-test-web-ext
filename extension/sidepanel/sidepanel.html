@@ -1,94 +1,104 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Test Recorder</title>
-  <link rel="stylesheet" href="sidepanel.css" />
-</head>
-<body>
-
-  <!-- ── Header ── -->
-  <header>
-    <h1>Test Recorder</h1>
-    <button id="btn-theme" class="theme-toggle" title="Cambiar tema">🌙</button>
-  </header>
-
-  <!-- ── Record Section ── -->
-  <section id="record-section">
-    <div id="record-idle">
-      <button id="btn-start-record" class="btn btn-record">
-        <span class="dot"></span> Iniciar grabación
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Recorder</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <!-- ── Header ── -->
+    <header>
+      <h1>Test Recorder</h1>
+      <button id="btn-theme" class="theme-toggle" title="Cambiar tema">
+        🌙
       </button>
-    </div>
+    </header>
 
-    <div id="record-active" class="hidden">
-      <div class="recording-indicator">
-        <span class="dot dot-pulse"></span>
-        <span>Grabando… <strong id="step-count">0</strong> acciones</span>
+    <!-- ── Record Section ── -->
+    <section id="record-section">
+      <div id="record-idle">
+        <button id="btn-start-record" class="btn btn-record">
+          <span class="dot"></span> Iniciar grabación
+        </button>
       </div>
 
-      <!-- Live feed of captured actions -->
-      <ul id="record-feed" class="record-feed"></ul>
+      <div id="record-active" class="hidden">
+        <div class="recording-indicator">
+          <span class="dot dot-pulse"></span>
+          <span>Grabando… <strong id="step-count">0</strong> acciones</span>
+        </div>
 
-      <input id="record-name" type="text" placeholder="Nombre de la prueba" maxlength="60" />
-      <div class="record-actions">
-        <button id="btn-stop-record" class="btn btn-primary">Guardar</button>
-        <button id="btn-cancel-record" class="btn btn-ghost">Cancelar</button>
+        <!-- Live feed of captured actions -->
+        <ul id="record-feed" class="record-feed"></ul>
+
+        <div class="record-actions">
+          <button id="btn-stop-record" class="btn btn-primary">Guardar</button>
+          <button id="btn-cancel-record" class="btn btn-ghost">Cancelar</button>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <hr />
-
-  <!-- ── Recordings List ── -->
-  <section id="list-section">
-    <div class="list-header">
-      <h2>Mis pruebas</h2>
-      <button id="btn-run-all" class="btn btn-primary btn-sm" disabled>▶ Correr todas</button>
-    </div>
-
-    <div id="recordings-empty" class="empty-state hidden">
-      <p>Aún no tienes pruebas grabadas.<br />Presiona <strong>Iniciar grabación</strong> para empezar.</p>
-    </div>
-
-    <ul id="recordings-list"></ul>
-  </section>
-
-  <!-- ── Active Run Progress ── -->
-  <section id="run-section" class="hidden">
     <hr />
-    <div class="run-header">
-      <span id="run-title">Corriendo…</span>
-      <button id="btn-abort" class="btn btn-ghost btn-sm">Detener</button>
-    </div>
-    <div class="progress-bar-wrap">
-      <div id="progress-bar" class="progress-bar"></div>
-    </div>
-    <p id="run-subtitle" class="run-subtitle"></p>
-    <ul id="steps-list" class="steps-list"></ul>
-  </section>
 
-  <!-- ── Batch Summary ── -->
-  <section id="batch-section" class="hidden">
-    <hr />
-    <h2>Resultado del batch</h2>
-    <p id="batch-summary"></p>
-    <ul id="batch-results"></ul>
-  </section>
+    <!-- ── Recordings List ── -->
+    <section id="list-section">
+      <div class="list-header">
+        <h2>Mis pruebas</h2>
+        <button id="btn-run-all" class="btn btn-primary btn-sm" disabled>
+          ▶ Correr todas
+        </button>
+      </div>
 
-  <!-- ── Name Dialog (for stop recording) ── -->
-  <div id="name-overlay" class="hidden overlay">
-    <div class="dialog">
-      <h3>Nombre de la prueba</h3>
-      <input id="dialog-name" type="text" placeholder="Ej: Login Valex" maxlength="60" />
-      <div class="dialog-actions">
-        <button id="btn-dialog-save" class="btn btn-primary">Guardar</button>
-        <button id="btn-dialog-cancel" class="btn btn-ghost">Cancelar</button>
+      <div id="recordings-empty" class="empty-state hidden">
+        <p>
+          Aún no tienes pruebas grabadas.<br />Presiona
+          <strong>Iniciar grabación</strong> para empezar.
+        </p>
+      </div>
+
+      <ul id="recordings-list"></ul>
+    </section>
+
+    <!-- ── Active Run Progress ── -->
+    <section id="run-section" class="hidden">
+      <hr />
+      <div class="run-header">
+        <span id="run-title">Corriendo…</span>
+        <button id="btn-abort" class="btn btn-ghost btn-sm">Detener</button>
+      </div>
+      <div class="progress-bar-wrap">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <p id="run-subtitle" class="run-subtitle"></p>
+      <ul id="steps-list" class="steps-list"></ul>
+    </section>
+
+    <!-- ── Batch Summary ── -->
+    <section id="batch-section" class="hidden">
+      <hr />
+      <h2>Resultado del batch</h2>
+      <p id="batch-summary"></p>
+      <ul id="batch-results"></ul>
+    </section>
+
+    <!-- ── Name Dialog (for stop recording) ── -->
+    <div id="name-overlay" class="hidden overlay">
+      <div class="dialog">
+        <h3>Nombre de la prueba</h3>
+        <input
+          id="dialog-name"
+          type="text"
+          placeholder="Ej: Login Valex"
+          maxlength="60"
+        />
+        <div class="dialog-actions">
+          <button id="btn-dialog-save" class="btn btn-primary">Guardar</button>
+          <button id="btn-dialog-cancel" class="btn btn-ghost">Cancelar</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <script type="module" src="sidepanel.js"></script>
-</body>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
 </html>
