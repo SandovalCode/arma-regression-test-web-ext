@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Test Recorder",
+  "version": "1.0.0",
+  "description": "Graba y replica flujos de prueba en el browser sin necesidad de conocimiento técnico.",
+  "minimum_chrome_version": "114",
+
+  "permissions": [
+    "debugger",
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "alarms",
+    "webNavigation",
+    "contextMenus"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+
+  "action": {
+    "default_title": "Test Recorder",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png"
+    }
+  },
+
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
+}
