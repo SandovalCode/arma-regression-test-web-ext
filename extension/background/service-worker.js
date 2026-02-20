@@ -294,7 +294,7 @@ async function runRecording(recording, tabId) {
 
       try {
         await executeStep(step, tabId, frameContextMap, clipboardVars, cdp);
-        await new Promise(r => setTimeout(r, 100)); // 100 ms gap between actions
+        await new Promise(r => setTimeout(r, 400)); // 400 ms gap between actions
 
         const durationMs = Date.now() - stepStart;
         stepResults.push({ index: i, type: step.type, status: 'passed', durationMs });
