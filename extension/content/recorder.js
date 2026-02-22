@@ -35,7 +35,11 @@
     _lastStepKey = key;
     _lastStepTime = now;
 
-    chrome.runtime.sendMessage({ type: 'RECORD_STEP', payload: { step } });
+    try {
+      chrome.runtime.sendMessage({ type: 'RECORD_STEP', payload: { step } });
+    } catch (_) {
+      // Extension context invalidated (e.g. extension reloaded while page is open) — ignore.
+    }
   }
 
   // ── Selector generation ───────────────────────────────────────────────────────
@@ -216,6 +220,31 @@
     });
   }
 
+  // Blur fallback for autocomplete inputs: many autocomplete libraries set
+  // .value programmatically without dispatching a native `change` event.
+  // When the input loses focus and there's still a pending change, flush it
+  // after a short delay to let the autocomplete library update the value first.
+  function handleBlur(e) {
+    const el = e.target;
+    if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return;
+    if (!pendingInputChange || pendingInputChange.el !== el) return;
+
+    const capturedEl = el;
+    setTimeout(() => {
+      // If handleChange already fired (change event arrived within the delay), skip.
+      if (!pendingInputChange || pendingInputChange.el !== capturedEl) return;
+      const value = capturedEl.value ?? '';
+      pendingInputChange = null;
+      sendStep({
+        type: 'change',
+        target: 'main',
+        selectors: generateSelectors(capturedEl),
+        value,
+        ...frameInfo,
+      });
+    }, 200);
+  }
+
   // Copy event — covers Ctrl+C, Cmd+C, and right-click → Copy
   function handleCopy(_e) {
     const sel = window.getSelection()?.toString() ?? lastSelection ?? '';
@@ -298,16 +327,20 @@
       elementValue = el.textContent?.trim() ?? '';
     }
 
-    chrome.runtime.sendMessage({
-      type: 'STORE_CONTEXT_EL',
-      payload: {
-        selectors: generateSelectors(el),
-        offsetX: Math.max(0, Math.round(e.clientX - rect.left)),
-        offsetY: Math.max(0, Math.round(e.clientY - rect.top)),
-        frame: getFrameIndex(),
-        elementValue: elementValue.slice(0, 200),
-      },
-    });
+    try {
+      chrome.runtime.sendMessage({
+        type: 'STORE_CONTEXT_EL',
+        payload: {
+          selectors: generateSelectors(el),
+          offsetX: Math.max(0, Math.round(e.clientX - rect.left)),
+          offsetY: Math.max(0, Math.round(e.clientY - rect.top)),
+          frame: getFrameIndex(),
+          elementValue: elementValue.slice(0, 200),
+        },
+      });
+    } catch (_) {
+      // Extension context invalidated — ignore.
+    }
   }
 
   // ── Register listeners ────────────────────────────────────────────────────────
@@ -317,6 +350,7 @@
   document.addEventListener('mouseup',     handleMouseUp,     { capture: true });
   document.addEventListener('input',       handleInput,       { capture: true });
   document.addEventListener('change',      handleChange,      { capture: true });
+  document.addEventListener('blur',        handleBlur,        { capture: true });
   document.addEventListener('copy',        handleCopy,        { capture: true });
   document.addEventListener('paste',       handlePaste,       { capture: true });
   document.addEventListener('keydown',     handleKeyDown,     { capture: true });
@@ -329,6 +363,7 @@
     document.removeEventListener('mouseup',     handleMouseUp,     { capture: true });
     document.removeEventListener('input',       handleInput,       { capture: true });
     document.removeEventListener('change',      handleChange,      { capture: true });
+    document.removeEventListener('blur',        handleBlur,        { capture: true });
     document.removeEventListener('copy',        handleCopy,        { capture: true });
     document.removeEventListener('paste',       handlePaste,       { capture: true });
     document.removeEventListener('keydown',     handleKeyDown,     { capture: true });
