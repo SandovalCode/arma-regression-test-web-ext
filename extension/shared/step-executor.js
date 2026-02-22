@@ -361,8 +361,10 @@ async function execSaveVariable(step, tabId, contextId, cdp, variables) {
 // ── pasteVariable ──────────────────────────────────────────────────────────────
 
 async function execPasteVariable(step, tabId, contextId, cdp, variables) {
-  const textToPaste = variables.get(step.variableName) ?? '';
-  if (!textToPaste) return; // variable not set or empty — nothing to paste
+  // Prefer the live runtime value captured by saveVariable; fall back to the
+  // defaultValue embedded in the step at recording time.
+  const textToPaste = variables.get(step.variableName) ?? step.fallbackValue ?? '';
+  if (!textToPaste) return; // nothing to paste
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);

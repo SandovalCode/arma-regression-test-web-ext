@@ -147,7 +147,39 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
       case MSG.ADD_RECORDING_STEP: {
         if (recordingState.active && payload.step) {
-          recordingState.steps.push(payload.step);
+          const step = payload.step;
+          recordingState.steps.push(step);
+
+          // For pasteVariable: also fill the target field immediately during recording
+          // so the user gets visual feedback that the value was inserted.
+          if (step.type === 'pasteVariable' && step.fallbackValue && step.selectors?.length) {
+            chrome.scripting.executeScript({
+              target: { tabId: recordingState.tabId },
+              func: (selList, txt) => {
+                let el = null;
+                for (const s of selList) {
+                  const sel = s[0];
+                  if (!sel) continue;
+                  try {
+                    if (sel.startsWith('xpath/')) {
+                      el = document.evaluate(sel.slice(6), document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                    } else if (!sel.startsWith('aria/') && !sel.startsWith('text/') && !sel.startsWith('pierce/')) {
+                      el = document.querySelector(sel);
+                    }
+                    if (el) break;
+                  } catch (_) {}
+                }
+                if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return;
+                el.focus();
+                el.select?.();
+                el.value = txt;
+                el.dispatchEvent(new Event('input',  { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              },
+              args: [step.selectors, step.fallbackValue],
+            }).catch(() => {});
+          }
+
           sendResponse({ ok: true });
         } else {
           sendResponse({ ok: false });
@@ -477,10 +509,11 @@ chrome.contextMenus.onClicked.addListener((_info, tab) => {
   }
 
   if (_info.menuItemId === 'record-paste-variable') {
-    // Collect all variable names saved so far in this recording session.
+    // Collect saved variables with their defaultValues so the sidepanel can
+    // both display them and embed a fallback value in the recorded step.
     const availableVars = recordingState.steps
       .filter(s => s.type === 'saveVariable')
-      .map(s => s.variableName);
+      .map(s => ({ name: s.variableName, defaultValue: s.defaultValue ?? '' }));
     broadcast(MSG.SHOW_PASTE_VARIABLE_DIALOG, {
       selectors: elInfo.selectors,
       frame: elInfo.frame ?? [],

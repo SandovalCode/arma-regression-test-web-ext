@@ -525,9 +525,11 @@ chrome.runtime.onMessage.addListener((msg) => {
       break;
 
     case MSG.SHOW_PASTE_VARIABLE_DIALOG: {
-      pendingPasteVariableStep = payload; // { selectors, frame, variables }
+      pendingPasteVariableStep = payload; // { selectors, frame, variables: [{name, defaultValue}] }
       const vars = payload.variables ?? [];
-      pasteVarSelect.innerHTML = vars.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+      pasteVarSelect.innerHTML = vars.map(v =>
+        `<option value="${escapeHtml(v.name)}" data-default="${escapeHtml(v.defaultValue ?? '')}">${escapeHtml(v.name)}</option>`
+      ).join('');
       pasteVarSelect.classList.toggle('hidden', vars.length === 0);
       pasteVarEmpty.classList.toggle('hidden', vars.length > 0);
       btnPasteVarSave.disabled = vars.length === 0;
@@ -579,10 +581,14 @@ btnPasteVarSave.addEventListener('click', async () => {
   const name = pasteVarSelect.value;
   if (!name) return;
 
+  const selectedOption = pasteVarSelect.selectedOptions[0];
+  const fallbackValue = selectedOption?.dataset.default ?? '';
+
   const step = {
     type: 'pasteVariable',
     target: 'main',
     variableName: name,
+    fallbackValue,
     selectors: pendingPasteVariableStep?.selectors ?? [],
     ...(pendingPasteVariableStep?.frame?.length ? { frame: pendingPasteVariableStep.frame } : {}),
   };
