@@ -134,6 +134,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       }
 
+      case MSG.UPDATE_RECORDING: {
+        const { id, title, steps, createdAt } = payload;
+        const updated = await saveRecording({ id, title, steps, createdAt });
+        sendResponse({ ok: true, recording: updated });
+        break;
+      }
+
       // ── Called from content script during recording ──
       case MSG.STORE_CONTEXT_EL:
         // Content script sends the right-clicked element info here so the

@@ -15,6 +15,7 @@ export const MSG = {
   GET_RECORDINGS:   'GET_RECORDINGS',
   GET_HISTORY:      'GET_HISTORY',
   DELETE_STEP:      'DELETE_STEP',       // sidepanel → SW: remove a step by index during recording
+  UPDATE_RECORDING: 'UPDATE_RECORDING', // sidepanel → SW: save edited title/steps of a saved recording
 
   // service-worker → sidepanel (events)
   STORE_CONTEXT_EL: 'STORE_CONTEXT_EL',  // content script → SW: store right-clicked element

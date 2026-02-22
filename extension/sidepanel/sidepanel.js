@@ -8,6 +8,8 @@ let state = {
   recordings: [],
 };
 
+let editingRecording = null; // { id, title, steps, createdAt }
+
 // ── DOM refs ───────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
@@ -35,6 +37,12 @@ const dialogNameInput  = $('dialog-name');
 const btnDialogSave    = $('btn-dialog-save');
 const btnDialogCancel  = $('btn-dialog-cancel');
 const btnTheme         = $('btn-theme');
+const editOverlay      = $('edit-overlay');
+const editTitleInput   = $('edit-title');
+const editStepsList    = $('edit-steps-list');
+const editStepCountEl  = $('edit-step-count');
+const btnEditSave      = $('btn-edit-save');
+const btnEditCancel    = $('btn-edit-cancel');
 
 // ── Theme toggle ───────────────────────────────────────────────────────────────
 function applyTheme(light) {
@@ -110,12 +118,15 @@ function renderRecordings(recordings) {
           <div class="recording-title">${escapeHtml(rec.title)}</div>
           <div class="recording-meta">${rec.steps?.length ?? 0} steps · ${formatDate(rec.createdAt)}</div>
         </div>
+        <button class="btn-icon btn-edit" data-id="${rec.id}" title="Edit">✏️</button>
       </div>
       <div class="last-run">${badgeHtml}</div>
       <div class="recording-card-actions">
         <button class="btn btn-primary btn-sm btn-run" data-id="${rec.id}">▶ Run</button>
+        <button class="btn btn-ghost btn-sm btn-history" data-id="${rec.id}">🕐 History</button>
         <button class="btn btn-ghost btn-sm btn-delete" data-id="${rec.id}">🗑</button>
       </div>
+      <div class="history-section hidden"></div>
     `;
     recordingsList.appendChild(li);
   }
@@ -255,6 +266,70 @@ function appendFeedItem(step) {
   li.scrollIntoView({ block: 'nearest' });
 }
 
+// ── History toggle ─────────────────────────────────────────────────────────────
+async function toggleHistory(recordingId, historySection, toggleBtn) {
+  if (!historySection.classList.contains('hidden')) {
+    historySection.classList.add('hidden');
+    toggleBtn.textContent = '🕐 History';
+    return;
+  }
+
+  historySection.textContent = 'Loading…';
+  historySection.classList.remove('hidden');
+
+  const res = await send(MSG.GET_HISTORY, { recordingId }) ?? { history: [] };
+  const runs = res.history ?? [];
+
+  if (runs.length === 0) {
+    historySection.innerHTML = '<p class="history-empty">No runs yet.</p>';
+    toggleBtn.textContent = '▲ History';
+    return;
+  }
+
+  historySection.innerHTML = runs.map(run => {
+    const failedInfo = run.failedStep
+      ? `<div class="history-failed">Step ${run.failedStep.index + 1} (${run.failedStep.type}): ${escapeHtml(run.failedStep.error ?? '')}</div>`
+      : '';
+    return `<div class="history-item">
+      <div class="history-item-row">
+        <span class="badge ${run.passed ? 'badge-pass' : 'badge-fail'}">${run.passed ? '✅ PASS' : '❌ FAIL'}</span>
+        <span class="history-meta">${run.completedSteps}/${run.totalSteps} steps · ${timeAgo(run.completedAt)}</span>
+      </div>
+      ${failedInfo}
+    </div>`;
+  }).join('');
+
+  toggleBtn.textContent = '▲ History';
+}
+
+// ── Edit overlay ───────────────────────────────────────────────────────────────
+function openEditOverlay(rec) {
+  editingRecording = { ...rec, steps: [...rec.steps] };
+  editTitleInput.value = rec.title;
+  renderEditSteps(editingRecording.steps);
+  editOverlay.classList.remove('hidden');
+  editTitleInput.focus();
+}
+
+function renderEditSteps(steps) {
+  editStepCountEl.textContent = steps.length;
+  editStepsList.innerHTML = '';
+  steps.forEach((step, i) => {
+    const icon = STEP_ICONS[step.type] ?? '·';
+    const { main, sub } = stepLabel(step);
+    const li = document.createElement('li');
+    li.className = 'edit-step-item';
+    li.dataset.index = i;
+    li.innerHTML = `
+      <span class="edit-step-icon">${icon}</span>
+      <span class="edit-step-label">${escapeHtml(main)}</span>
+      ${sub ? `<span class="edit-step-sub">${escapeHtml(sub)}</span>` : ''}
+      <button class="btn-delete-edit-step" title="Delete step">×</button>
+    `;
+    editStepsList.appendChild(li);
+  });
+}
+
 // Delete a step from the feed and from the SW recording state
 recordFeed.addEventListener('click', async e => {
   const btn = e.target.closest('.btn-delete-step');
@@ -332,10 +407,12 @@ btnAbort.addEventListener('click', () => {
   send(MSG.ABORT_RUN);
 });
 
-// Delegated click on recording list (run / delete)
+// Delegated click on recording list (run / delete / edit / history)
 recordingsList.addEventListener('click', async e => {
   const runBtn    = e.target.closest('.btn-run');
   const deleteBtn = e.target.closest('.btn-delete');
+  const editBtn   = e.target.closest('.btn-edit');
+  const histBtn   = e.target.closest('.btn-history');
 
   if (runBtn) {
     const tabId = await getActiveTabId();
@@ -351,6 +428,17 @@ recordingsList.addEventListener('click', async e => {
     if (!confirm('Delete this test?')) return;
     await send(MSG.DELETE_RECORDING, { recordingId: deleteBtn.dataset.id });
     await loadRecordings();
+  }
+
+  if (editBtn) {
+    const rec = state.recordings.find(r => r.id === editBtn.dataset.id);
+    if (rec) openEditOverlay(rec);
+  }
+
+  if (histBtn) {
+    const card = histBtn.closest('.recording-card');
+    const historySection = card.querySelector('.history-section');
+    await toggleHistory(histBtn.dataset.id, historySection, histBtn);
   }
 });
 
@@ -410,6 +498,43 @@ chrome.runtime.onMessage.addListener((msg) => {
       break;
     }
   }
+});
+
+// ── Edit overlay event listeners ───────────────────────────────────────────────
+
+// Delete a step from the local copy while editing
+editStepsList.addEventListener('click', e => {
+  const btn = e.target.closest('.btn-delete-edit-step');
+  if (!btn || !editingRecording) return;
+  const li = btn.closest('.edit-step-item');
+  const idx = Number(li.dataset.index);
+  editingRecording.steps.splice(idx, 1);
+  renderEditSteps(editingRecording.steps);
+});
+
+btnEditSave.addEventListener('click', async () => {
+  const title = editTitleInput.value.trim();
+  if (!title) { editTitleInput.focus(); return; }
+  editingRecording.title = title;
+  await send(MSG.UPDATE_RECORDING, {
+    id: editingRecording.id,
+    title: editingRecording.title,
+    steps: editingRecording.steps,
+    createdAt: editingRecording.createdAt,
+  });
+  editOverlay.classList.add('hidden');
+  editingRecording = null;
+  await loadRecordings();
+});
+
+btnEditCancel.addEventListener('click', () => {
+  editOverlay.classList.add('hidden');
+  editingRecording = null;
+});
+
+editTitleInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') btnEditSave.click();
+  if (e.key === 'Escape') btnEditCancel.click();
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────────

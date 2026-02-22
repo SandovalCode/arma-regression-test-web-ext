@@ -7,10 +7,12 @@ export async function getRecordings() {
   return recordings;
 }
 
-export async function saveRecording({ id, title, steps }) {
+export async function saveRecording({ id, title, steps, createdAt }) {
   const recordings = await getRecordings();
   const existing = recordings.findIndex(r => r.id === id);
-  const entry = { id, title, createdAt: new Date().toISOString(), steps };
+  // Preserve original createdAt when updating; only set to now for new recordings
+  const existingCreatedAt = existing >= 0 ? recordings[existing].createdAt : null;
+  const entry = { id, title, createdAt: createdAt ?? existingCreatedAt ?? new Date().toISOString(), steps };
   if (existing >= 0) {
     recordings[existing] = entry;
   } else {

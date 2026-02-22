@@ -99,6 +99,23 @@
       </div>
     </div>
 
+    <!-- ── Edit Recording Overlay ── -->
+    <div id="edit-overlay" class="hidden overlay">
+      <div class="dialog dialog-wide">
+        <h3>Edit recording</h3>
+        <label class="edit-label">Name</label>
+        <input id="edit-title" type="text" placeholder="Recording name" maxlength="60" />
+        <div class="edit-steps-header">
+          <span class="edit-label">Steps (<span id="edit-step-count">0</span>)</span>
+        </div>
+        <ul id="edit-steps-list" class="edit-steps-list"></ul>
+        <div class="dialog-actions">
+          <button id="btn-edit-save" class="btn btn-primary">Save changes</button>
+          <button id="btn-edit-cancel" class="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="sidepanel.js"></script>
   </body>
 </html>
