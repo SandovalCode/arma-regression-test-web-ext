@@ -29,6 +29,7 @@ export async function executeStep(step, tabId, frameContextMap, clipboardVars, c
     case 'copy':           return execCopy(step, tabId, contextId, clipboardVars, cdp);
     case 'paste':          return execPaste(step, tabId, contextId, clipboardVars, cdp);
     case 'saveVariable':   return execSaveVariable(step, tabId, contextId, cdp, variables);
+    case 'pasteVariable':  return execPasteVariable(step, tabId, contextId, cdp, variables);
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
       console.warn(`[step-executor] Unknown step type: ${step.type} — skipping`);
@@ -355,6 +356,37 @@ async function execSaveVariable(step, tabId, contextId, cdp, variables) {
   }
 
   variables.set(step.variableName, value);
+}
+
+// ── pasteVariable ──────────────────────────────────────────────────────────────
+
+async function execPasteVariable(step, tabId, contextId, cdp, variables) {
+  const textToPaste = variables.get(step.variableName) ?? '';
+  if (!textToPaste) return; // variable not set or empty — nothing to paste
+
+  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
+
+  // Focus, clear, insert text
+  await cdp(tabId, 'Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
+    returnByValue: true,
+  });
+
+  await cdp(tabId, 'Input.insertText', { text: textToPaste });
+
+  // Fire reactivity events
+  await cdp(tabId, 'Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: `function(v) {
+      if (this.value !== v) this.value = v;
+      this.dispatchEvent(new Event('input',  { bubbles: true }));
+      this.dispatchEvent(new Event('change', { bubbles: true }));
+    }`,
+    arguments: [{ value: textToPaste }],
+    returnByValue: true,
+  });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

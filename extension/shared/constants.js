@@ -26,7 +26,8 @@ export const MSG = {
   BATCH_PROGRESS:       'BATCH_PROGRESS',        // batch: moved to next recording
   BATCH_COMPLETE:       'BATCH_COMPLETE',        // batch: all recordings done
   RECORDING_STATE:      'RECORDING_STATE',       // recording started/stopped confirmation
-  SHOW_VARIABLE_DIALOG: 'SHOW_VARIABLE_DIALOG',  // SW → sidepanel: open the save-variable dialog
+  SHOW_VARIABLE_DIALOG:       'SHOW_VARIABLE_DIALOG',       // SW → sidepanel: open the save-variable dialog
+  SHOW_PASTE_VARIABLE_DIALOG: 'SHOW_PASTE_VARIABLE_DIALOG', // SW → sidepanel: open the paste-variable dialog
 };
 
 export const StepStatus = {

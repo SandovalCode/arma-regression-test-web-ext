@@ -8,8 +8,9 @@ let state = {
   recordings: [],
 };
 
-let editingRecording = null;    // { id, title, steps, createdAt }
-let pendingVariableStep = null; // { selectors, defaultValue, frame } — from SHOW_VARIABLE_DIALOG
+let editingRecording = null;         // { id, title, steps, createdAt }
+let pendingVariableStep = null;      // { selectors, defaultValue, frame } — from SHOW_VARIABLE_DIALOG
+let pendingPasteVariableStep = null; // { selectors, frame, variables } — from SHOW_PASTE_VARIABLE_DIALOG
 
 // ── DOM refs ───────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -49,6 +50,11 @@ const varNameInput     = $('var-name');
 const varValueInput    = $('var-value');
 const btnVarSave       = $('btn-var-save');
 const btnVarCancel     = $('btn-var-cancel');
+const pasteVarOverlay  = $('paste-var-overlay');
+const pasteVarSelect   = $('paste-var-select');
+const pasteVarEmpty    = $('paste-var-empty');
+const btnPasteVarSave  = $('btn-paste-var-save');
+const btnPasteVarCancel = $('btn-paste-var-cancel');
 
 // ── Theme toggle ───────────────────────────────────────────────────────────────
 function applyTheme(light) {
@@ -220,6 +226,7 @@ const STEP_ICONS = {
   waitForElement: '⏳',
   setViewport:    '🖥️',
   saveVariable:   '📌',
+  pasteVariable:  '📋',
 };
 
 function stepLabel(step) {
@@ -255,6 +262,8 @@ function stepLabel(step) {
       return { main: `Viewport ${step.width}×${step.height}`, sub: '' };
     case 'saveVariable':
       return { main: `Save "${step.variableName}"`, sub: String(step.defaultValue ?? '').slice(0, 30) };
+    case 'pasteVariable':
+      return { main: `Paste "${step.variableName}"`, sub: selectorHint };
     default:
       return { main: step.type, sub: '' };
   }
@@ -514,6 +523,17 @@ chrome.runtime.onMessage.addListener((msg) => {
       varOverlay.classList.remove('hidden');
       varNameInput.focus();
       break;
+
+    case MSG.SHOW_PASTE_VARIABLE_DIALOG: {
+      pendingPasteVariableStep = payload; // { selectors, frame, variables }
+      const vars = payload.variables ?? [];
+      pasteVarSelect.innerHTML = vars.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+      pasteVarSelect.classList.toggle('hidden', vars.length === 0);
+      pasteVarEmpty.classList.toggle('hidden', vars.length > 0);
+      btnPasteVarSave.disabled = vars.length === 0;
+      pasteVarOverlay.classList.remove('hidden');
+      break;
+    }
   }
 });
 
@@ -551,6 +571,35 @@ btnVarCancel.addEventListener('click', () => {
 varNameInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') btnVarSave.click();
   if (e.key === 'Escape') btnVarCancel.click();
+});
+
+// ── Paste variable dialog event listeners ──────────────────────────────────────
+
+btnPasteVarSave.addEventListener('click', async () => {
+  const name = pasteVarSelect.value;
+  if (!name) return;
+
+  const step = {
+    type: 'pasteVariable',
+    target: 'main',
+    variableName: name,
+    selectors: pendingPasteVariableStep?.selectors ?? [],
+    ...(pendingPasteVariableStep?.frame?.length ? { frame: pendingPasteVariableStep.frame } : {}),
+  };
+
+  await send(MSG.ADD_RECORDING_STEP, { step });
+
+  state.recordingStepCount++;
+  stepCountEl.textContent = state.recordingStepCount;
+  appendFeedItem(step);
+
+  pasteVarOverlay.classList.add('hidden');
+  pendingPasteVariableStep = null;
+});
+
+btnPasteVarCancel.addEventListener('click', () => {
+  pasteVarOverlay.classList.add('hidden');
+  pendingPasteVariableStep = null;
 });
 
 // ── Edit overlay event listeners ───────────────────────────────────────────────

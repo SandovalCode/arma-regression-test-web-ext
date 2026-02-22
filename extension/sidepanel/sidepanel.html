@@ -114,6 +114,20 @@
       </div>
     </div>
 
+    <!-- ── Paste Variable Dialog ── -->
+    <div id="paste-var-overlay" class="hidden overlay">
+      <div class="dialog">
+        <h3>Paste variable</h3>
+        <label class="edit-label">Select variable</label>
+        <select id="paste-var-select" class="paste-var-select"></select>
+        <p id="paste-var-empty" class="paste-var-empty hidden">No saved variables yet. Use "Save variable" first.</p>
+        <div class="dialog-actions">
+          <button id="btn-paste-var-save" class="btn btn-primary">Paste</button>
+          <button id="btn-paste-var-cancel" class="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Edit Recording Overlay ── -->
     <div id="edit-overlay" class="hidden overlay">
       <div class="dialog dialog-wide">

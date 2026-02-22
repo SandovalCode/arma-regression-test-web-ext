@@ -448,11 +448,16 @@ chrome.contextMenus.removeAll(() => {
     title: 'Save variable',
     contexts: ['all'],
   });
+  chrome.contextMenus.create({
+    id: 'record-paste-variable',
+    title: 'Paste variable',
+    contexts: ['all'],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener((_info, tab) => {
   if (!recordingState.active || tab.id !== recordingState.tabId) return;
-  if (!['record-hover', 'record-wait', 'record-variable'].includes(_info.menuItemId)) return;
+  if (!['record-hover', 'record-wait', 'record-variable', 'record-paste-variable'].includes(_info.menuItemId)) return;
 
   // Use the element info stored by the content script via STORE_CONTEXT_EL message.
   const elInfo = lastContextMenuEl;
@@ -467,6 +472,19 @@ chrome.contextMenus.onClicked.addListener((_info, tab) => {
       selectors: elInfo.selectors,
       defaultValue: elInfo.elementValue ?? '',
       frame: elInfo.frame ?? [],
+    });
+    return;
+  }
+
+  if (_info.menuItemId === 'record-paste-variable') {
+    // Collect all variable names saved so far in this recording session.
+    const availableVars = recordingState.steps
+      .filter(s => s.type === 'saveVariable')
+      .map(s => s.variableName);
+    broadcast(MSG.SHOW_PASTE_VARIABLE_DIALOG, {
+      selectors: elInfo.selectors,
+      frame: elInfo.frame ?? [],
+      variables: availableVars,
     });
     return;
   }
