@@ -8,7 +8,8 @@ let state = {
   recordings: [],
 };
 
-let editingRecording = null; // { id, title, steps, createdAt }
+let editingRecording = null;    // { id, title, steps, createdAt }
+let pendingVariableStep = null; // { selectors, defaultValue, frame } — from SHOW_VARIABLE_DIALOG
 
 // ── DOM refs ───────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -43,6 +44,11 @@ const editStepsList    = $('edit-steps-list');
 const editStepCountEl  = $('edit-step-count');
 const btnEditSave      = $('btn-edit-save');
 const btnEditCancel    = $('btn-edit-cancel');
+const varOverlay       = $('var-overlay');
+const varNameInput     = $('var-name');
+const varValueInput    = $('var-value');
+const btnVarSave       = $('btn-var-save');
+const btnVarCancel     = $('btn-var-cancel');
 
 // ── Theme toggle ───────────────────────────────────────────────────────────────
 function applyTheme(light) {
@@ -213,6 +219,7 @@ const STEP_ICONS = {
   scroll:         '📜',
   waitForElement: '⏳',
   setViewport:    '🖥️',
+  saveVariable:   '📌',
 };
 
 function stepLabel(step) {
@@ -246,6 +253,8 @@ function stepLabel(step) {
       return { main: 'Wait for element', sub: selectorHint };
     case 'setViewport':
       return { main: `Viewport ${step.width}×${step.height}`, sub: '' };
+    case 'saveVariable':
+      return { main: `Save "${step.variableName}"`, sub: String(step.defaultValue ?? '').slice(0, 30) };
     default:
       return { main: step.type, sub: '' };
   }
@@ -497,7 +506,51 @@ chrome.runtime.onMessage.addListener((msg) => {
       loadRecordings();
       break;
     }
+
+    case MSG.SHOW_VARIABLE_DIALOG:
+      pendingVariableStep = payload; // { selectors, defaultValue, frame }
+      varNameInput.value  = '';
+      varValueInput.value = payload.defaultValue ?? '';
+      varOverlay.classList.remove('hidden');
+      varNameInput.focus();
+      break;
   }
+});
+
+// ── Variable dialog event listeners ────────────────────────────────────────────
+
+btnVarSave.addEventListener('click', async () => {
+  const name = varNameInput.value.trim();
+  if (!name) { varNameInput.focus(); return; }
+
+  const step = {
+    type: 'saveVariable',
+    target: 'main',
+    variableName: name,
+    defaultValue: varValueInput.value,
+    selectors: pendingVariableStep?.selectors ?? [],
+    ...(pendingVariableStep?.frame?.length ? { frame: pendingVariableStep.frame } : {}),
+  };
+
+  await send(MSG.ADD_RECORDING_STEP, { step });
+
+  // Add to the live feed directly (SW does not re-broadcast ADD_RECORDING_STEP)
+  state.recordingStepCount++;
+  stepCountEl.textContent = state.recordingStepCount;
+  appendFeedItem(step);
+
+  varOverlay.classList.add('hidden');
+  pendingVariableStep = null;
+});
+
+btnVarCancel.addEventListener('click', () => {
+  varOverlay.classList.add('hidden');
+  pendingVariableStep = null;
+});
+
+varNameInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') btnVarSave.click();
+  if (e.key === 'Escape') btnVarCancel.click();
 });
 
 // ── Edit overlay event listeners ───────────────────────────────────────────────

@@ -7,6 +7,11 @@
  */
 
 (function () {
+  // Don't run inside chrome:// or chrome-extension:// frames (e.g. iframes from other extensions).
+  // Injecting there would cause "Cannot access a chrome-extension:// URL of different extension"
+  // when the content script tries to sendMessage back to the service worker.
+  if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
+
   // Prevent double-injection on the same page
   if (window.__recorderActive) return;
   window.__recorderActive = true;
@@ -283,6 +288,16 @@
     const el = e.target;
     if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
     const rect = el.getBoundingClientRect();
+
+    // Capture element's current text/value so the SW can use it as a default
+    // for the "Save variable" dialog without needing another executeScript round-trip.
+    let elementValue = '';
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) {
+      elementValue = el.value ?? '';
+    } else {
+      elementValue = el.textContent?.trim() ?? '';
+    }
+
     chrome.runtime.sendMessage({
       type: 'STORE_CONTEXT_EL',
       payload: {
@@ -290,6 +305,7 @@
         offsetX: Math.max(0, Math.round(e.clientX - rect.left)),
         offsetY: Math.max(0, Math.round(e.clientY - rect.top)),
         frame: getFrameIndex(),
+        elementValue: elementValue.slice(0, 200),
       },
     });
   }

@@ -14,17 +14,19 @@ export const MSG = {
   DELETE_RECORDING: 'DELETE_RECORDING',
   GET_RECORDINGS:   'GET_RECORDINGS',
   GET_HISTORY:      'GET_HISTORY',
-  DELETE_STEP:      'DELETE_STEP',       // sidepanel → SW: remove a step by index during recording
-  UPDATE_RECORDING: 'UPDATE_RECORDING', // sidepanel → SW: save edited title/steps of a saved recording
+  DELETE_STEP:        'DELETE_STEP',        // sidepanel → SW: remove a step by index during recording
+  UPDATE_RECORDING:   'UPDATE_RECORDING',   // sidepanel → SW: save edited title/steps of a saved recording
+  ADD_RECORDING_STEP: 'ADD_RECORDING_STEP', // sidepanel → SW: push a manually-created step
 
   // service-worker → sidepanel (events)
-  STORE_CONTEXT_EL: 'STORE_CONTEXT_EL',  // content script → SW: store right-clicked element
-  RECORD_STEP:      'RECORD_STEP',       // a step was captured during recording
-  STEP_PROGRESS:    'STEP_PROGRESS',     // a step finished during replay
-  RUN_COMPLETE:     'RUN_COMPLETE',      // a single recording run finished
-  BATCH_PROGRESS:   'BATCH_PROGRESS',    // batch: moved to next recording
-  BATCH_COMPLETE:   'BATCH_COMPLETE',    // batch: all recordings done
-  RECORDING_STATE:  'RECORDING_STATE',   // recording started/stopped confirmation
+  STORE_CONTEXT_EL:     'STORE_CONTEXT_EL',     // content script → SW: store right-clicked element
+  RECORD_STEP:          'RECORD_STEP',           // a step was captured during recording
+  STEP_PROGRESS:        'STEP_PROGRESS',         // a step finished during replay
+  RUN_COMPLETE:         'RUN_COMPLETE',           // a single recording run finished
+  BATCH_PROGRESS:       'BATCH_PROGRESS',        // batch: moved to next recording
+  BATCH_COMPLETE:       'BATCH_COMPLETE',        // batch: all recordings done
+  RECORDING_STATE:      'RECORDING_STATE',       // recording started/stopped confirmation
+  SHOW_VARIABLE_DIALOG: 'SHOW_VARIABLE_DIALOG',  // SW → sidepanel: open the save-variable dialog
 };
 
 export const StepStatus = {

@@ -99,6 +99,21 @@
       </div>
     </div>
 
+    <!-- ── Save Variable Dialog ── -->
+    <div id="var-overlay" class="hidden overlay">
+      <div class="dialog">
+        <h3>Save variable</h3>
+        <label class="edit-label">Variable name</label>
+        <input id="var-name" type="text" placeholder="e.g. username" maxlength="40" />
+        <label class="edit-label">Default value</label>
+        <input id="var-value" type="text" placeholder="Value from page" maxlength="200" />
+        <div class="dialog-actions">
+          <button id="btn-var-save" class="btn btn-primary">Save</button>
+          <button id="btn-var-cancel" class="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Edit Recording Overlay ── -->
     <div id="edit-overlay" class="hidden overlay">
       <div class="dialog dialog-wide">

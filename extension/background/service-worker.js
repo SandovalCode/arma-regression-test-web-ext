@@ -18,6 +18,9 @@ let replayState = {
 // Clipboard variables that survive cross-site navigation during a run
 let clipboardVars = new Map();
 
+// User-defined variables saved during a run via the "Save variable" step
+let variables = new Map();
+
 // Execution context map: frameId → executionContextId (populated via Runtime events)
 let frameContextMap = new Map();
 
@@ -67,6 +70,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const { type, payload } = msg;
 
   (async () => {
+    try {
     switch (type) {
 
       // ── Recording ──
@@ -141,11 +145,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       }
 
+      case MSG.ADD_RECORDING_STEP: {
+        if (recordingState.active && payload.step) {
+          recordingState.steps.push(payload.step);
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ ok: false });
+        }
+        break;
+      }
+
       // ── Called from content script during recording ──
       case MSG.STORE_CONTEXT_EL:
         // Content script sends the right-clicked element info here so the
         // context menu handler can use it without a fragile executeScript call.
         if (recordingState.active) lastContextMenuEl = payload;
+        sendResponse({ ok: true }); // close the port immediately (fire-and-forget)
         break;
 
       case MSG.RECORD_STEP:
@@ -154,10 +169,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // No re-broadcast: sidepanel already receives this message directly from the content script.
           // (Hover steps created in the SW are broadcast separately via the context menu handler.)
         }
+        sendResponse({ ok: true }); // close the port immediately (fire-and-forget)
         break;
 
       default:
         sendResponse({ ok: false, error: `Unknown message type: ${type}` });
+    }
+    } catch (err) {
+      // Swallow "Cannot access a chrome-extension:// URL of different extension" and
+      // any other errors thrown by sendResponse when the port is already closed.
+      console.warn(`[SW] Error handling message "${type}":`, err.message);
+      try { sendResponse({ ok: false, error: err.message }); } catch (_) {}
     }
   })();
 
@@ -269,6 +291,7 @@ async function runRecording(recording, tabId) {
 
   replayState = { active: true, aborted: false, tabId };
   clipboardVars = new Map();
+  variables = new Map();
   frameContextMap = new Map();
 
   startKeepalive();
@@ -300,7 +323,7 @@ async function runRecording(recording, tabId) {
       });
 
       try {
-        await executeStep(step, tabId, frameContextMap, clipboardVars, cdp);
+        await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
         await new Promise(r => setTimeout(r, 400)); // 400 ms gap between actions
 
         const durationMs = Date.now() - stepStart;
@@ -420,16 +443,33 @@ chrome.contextMenus.removeAll(() => {
     title: 'Wait for element',
     contexts: ['all'],
   });
+  chrome.contextMenus.create({
+    id: 'record-variable',
+    title: 'Save variable',
+    contexts: ['all'],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener((_info, tab) => {
   if (!recordingState.active || tab.id !== recordingState.tabId) return;
-  if (_info.menuItemId !== 'record-hover' && _info.menuItemId !== 'record-wait') return;
+  if (!['record-hover', 'record-wait', 'record-variable'].includes(_info.menuItemId)) return;
 
   // Use the element info stored by the content script via STORE_CONTEXT_EL message.
   const elInfo = lastContextMenuEl;
   if (!elInfo) return;
   lastContextMenuEl = null; // consume it
+
+  if (_info.menuItemId === 'record-variable') {
+    // Prompt the user for a variable name via the sidepanel dialog.
+    // The step will be added to recordingState when the sidepanel responds
+    // with ADD_RECORDING_STEP after the user confirms the dialog.
+    broadcast(MSG.SHOW_VARIABLE_DIALOG, {
+      selectors: elInfo.selectors,
+      defaultValue: elInfo.elementValue ?? '',
+      frame: elInfo.frame ?? [],
+    });
+    return;
+  }
 
   let step;
   if (_info.menuItemId === 'record-hover') {

@@ -9,24 +9,26 @@ import { NAV_TIMEOUT_MS, STEP_TIMEOUT_MS } from './constants.js';
  * @param {Map}     frameContextMap — Map<frameId, executionContextId>
  * @param {Map}     clipboardVars   — Map<variableName, copiedText> (persists during run)
  * @param {function} cdp            — cdp(tabId, method, params) helper from service worker
+ * @param {Map}     variables       — Map<variableName, value> for user-defined saved variables
  */
-export async function executeStep(step, tabId, frameContextMap, clipboardVars, cdp) {
+export async function executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables = new Map()) {
   // Resolve the correct execution context for this step's frame
   const contextId = resolveContext(step, frameContextMap);
 
   switch (step.type) {
-    case 'setViewport':   return execSetViewport(step, tabId, cdp);
-    case 'navigate':      return execNavigate(step, tabId, cdp);
-    case 'click':         return execClick(step, tabId, contextId, cdp);
-    case 'doubleClick':   return execDoubleClick(step, tabId, contextId, cdp);
-    case 'hover':         return execHover(step, tabId, contextId, cdp);
-    case 'change':        return execChange(step, tabId, contextId, cdp);
-    case 'keyDown':       return execKeyDown(step, tabId, cdp);
-    case 'keyUp':         return execKeyUp(step, tabId, cdp);
-    case 'waitForElement':return execWaitForElement(step, tabId, contextId, cdp);
-    case 'scroll':        return execScroll(step, tabId, contextId, cdp);
-    case 'copy':          return execCopy(step, tabId, contextId, clipboardVars, cdp);
-    case 'paste':         return execPaste(step, tabId, contextId, clipboardVars, cdp);
+    case 'setViewport':    return execSetViewport(step, tabId, cdp);
+    case 'navigate':       return execNavigate(step, tabId, cdp);
+    case 'click':          return execClick(step, tabId, contextId, cdp);
+    case 'doubleClick':    return execDoubleClick(step, tabId, contextId, cdp);
+    case 'hover':          return execHover(step, tabId, contextId, cdp);
+    case 'change':         return execChange(step, tabId, contextId, cdp);
+    case 'keyDown':        return execKeyDown(step, tabId, cdp);
+    case 'keyUp':          return execKeyUp(step, tabId, cdp);
+    case 'waitForElement': return execWaitForElement(step, tabId, contextId, cdp);
+    case 'scroll':         return execScroll(step, tabId, contextId, cdp);
+    case 'copy':           return execCopy(step, tabId, contextId, clipboardVars, cdp);
+    case 'paste':          return execPaste(step, tabId, contextId, clipboardVars, cdp);
+    case 'saveVariable':   return execSaveVariable(step, tabId, contextId, cdp, variables);
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
       console.warn(`[step-executor] Unknown step type: ${step.type} — skipping`);
@@ -324,6 +326,35 @@ async function execPaste(step, tabId, contextId, clipboardVars, cdp) {
     arguments: [{ value: textToPaste }],
     returnByValue: true,
   });
+}
+
+// ── saveVariable ───────────────────────────────────────────────────────────────
+
+async function execSaveVariable(step, tabId, contextId, cdp, variables) {
+  let value = step.defaultValue ?? '';
+
+  // Try to read the element's live value; fall back to defaultValue if unavailable.
+  try {
+    const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+    if (objectId) {
+      const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: `function() {
+          if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
+            return this.value;
+          }
+          return this.textContent?.trim() ?? '';
+        }`,
+        returnByValue: true,
+      });
+      const current = res?.result?.value;
+      if (current != null && current !== '') value = current;
+    }
+  } catch (_) {
+    // Fall back to defaultValue captured at recording time
+  }
+
+  variables.set(step.variableName, value);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
