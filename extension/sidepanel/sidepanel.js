@@ -283,6 +283,7 @@ function appendFeedItem(step) {
   const { main, sub } = stepLabel(step);
   const li = document.createElement('li');
   li.className = 'record-feed-item';
+  li.dataset.type = step.type; // used by the dblclick inline-edit handler
   li.innerHTML = `
     <span class="record-feed-icon">${icon}</span>
     <span class="record-feed-label">${escapeHtml(main)}</span>
@@ -389,6 +390,55 @@ recordFeed.addEventListener('click', async e => {
   li.remove();
   state.recordingStepCount = Math.max(0, state.recordingStepCount - 1);
   stepCountEl.textContent = state.recordingStepCount;
+});
+
+// Double-click a "Type" step in the feed to edit its value inline.
+// Enter confirms, Escape cancels.
+recordFeed.addEventListener('dblclick', e => {
+  const li = e.target.closest('.record-feed-item');
+  if (!li || li.dataset.type !== 'change') return;
+  if (li.querySelector('.record-feed-edit')) return; // already editing
+
+  const index = Array.from(recordFeed.children).indexOf(li);
+  if (index < 0) return;
+
+  const subEl = li.querySelector('.record-feed-sub');
+  // Extract raw value from the displayed label, e.g. `"hello"` → `hello`
+  const rawValue = subEl ? subEl.textContent.replace(/^"|"$/g, '') : '';
+
+  const input = document.createElement('input');
+  input.className = 'record-feed-edit';
+  input.type = 'text';
+  input.value = rawValue;
+  if (subEl) subEl.replaceWith(input); else li.insertBefore(input, li.querySelector('.btn-delete-step'));
+  input.focus();
+  input.select();
+
+  let settled = false;
+
+  function confirm() {
+    if (settled) return;
+    settled = true;
+    const newValue = input.value;
+    send(MSG.UPDATE_RECORDING_STEP, { index, value: newValue });
+    const newSub = document.createElement('span');
+    newSub.className = 'record-feed-sub';
+    newSub.textContent = `"${newValue.slice(0, 30)}"`;
+    input.replaceWith(newSub);
+  }
+
+  function cancel() {
+    if (settled) return;
+    settled = true;
+    if (subEl) input.replaceWith(subEl);
+    else input.remove();
+  }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); confirm(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  input.addEventListener('blur', cancel);
 });
 
 // ── Event listeners ────────────────────────────────────────────────────────────

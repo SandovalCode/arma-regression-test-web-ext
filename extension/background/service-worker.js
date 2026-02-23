@@ -150,6 +150,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       }
 
+      case MSG.UPDATE_RECORDING_STEP: {
+        const { index, value } = payload;
+        const step = recordingState.active && recordingState.steps[index];
+        if (step && step.type === 'change') {
+          step.value = value;
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ ok: false });
+        }
+        break;
+      }
+
       case MSG.UPDATE_RECORDING: {
         const { id, title, steps, createdAt } = payload;
         const updated = await saveRecording({ id, title, steps, createdAt });
