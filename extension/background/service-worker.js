@@ -409,20 +409,23 @@ async function runRecording(recording, tabId) {
       try {
         // Auto: waitForElement before any click so the element is ready
         if ((step.type === 'click' || step.type === 'doubleClick') && step.selectors?.length) {
+          console.log(`[Replay] step ${i + 1} auto → waitForElement`, JSON.stringify(step.selectors));
           await executeStep(
             { type: 'waitForElement', selectors: step.selectors, target: step.target },
             tabId, frameContextMap, clipboardVars, cdp, variables
-          ).catch(() => {}); // non-fatal — proceed even if element not found yet
+          ).catch(err => console.warn(`[Replay] step ${i + 1} waitForElement failed (proceeding):`, err.message));
         }
 
+        console.log(`[Replay] step ${i + 1}:`, JSON.stringify(step, null, 2));
         await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
 
         // Auto: waitForPageLoad after navigate so the next action waits for the page
         if (step.type === 'navigate' && !replayState.aborted) {
+          console.log(`[Replay] step ${i + 1} auto → waitForPageLoad`);
           await executeStep(
             { type: 'waitForPageLoad' },
             tabId, frameContextMap, clipboardVars, cdp, variables
-          ).catch(() => {});
+          ).catch(err => console.warn(`[Replay] step ${i + 1} waitForPageLoad failed (proceeding):`, err.message));
         }
 
         await new Promise(r => setTimeout(r, 400)); // 400 ms gap between actions

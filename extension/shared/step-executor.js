@@ -216,30 +216,16 @@ async function execChange(step, tabId, contextId, cdp) {
       await cdp(tabId, 'Input.insertText', { text: char });
       await cdp(tabId, 'Runtime.callFunctionOn', {
         objectId,
-        functionDeclaration: 'function() { this.dispatchEvent(new Event("input",  { bubbles: true })); this.dispatchEvent(new Event("change", { bubbles: true })); }',
+        functionDeclaration: 'function(c) { this.dispatchEvent(new KeyboardEvent("keydown", { key: c, bubbles: true })); this.dispatchEvent(new Event("change", { bubbles: true })); }',
+        arguments: [{ value: char }],
         returnByValue: true,
       });
       await sleep(110);
     }
 
-    // Wait for autocomplete dropdown to appear
+    // Wait for autocomplete dropdown to appear, then click the matching option
     await sleep(350);
-
-    // Try to find and click a matching autocomplete option
-    const clicked = await tryClickAutocompleteOption(value, tabId, contextId, cdp);
-
-    if (!clicked) {
-      // No autocomplete option visible — fire final change event so the form knows the value
-      await cdp(tabId, 'Runtime.callFunctionOn', {
-        objectId,
-        functionDeclaration: `function(v) {
-          if (this.value !== v) this.value = v;
-          this.dispatchEvent(new Event('change', { bubbles: true }));
-        }`,
-        arguments: [{ value }],
-        returnByValue: true,
-      });
-    }
+    await tryClickAutocompleteOption(value, tabId, contextId, cdp);
   }
 }
 
