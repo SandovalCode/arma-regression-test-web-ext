@@ -39,6 +39,7 @@ const dialogNameInput  = $('dialog-name');
 const btnDialogSave    = $('btn-dialog-save');
 const btnDialogCancel  = $('btn-dialog-cancel');
 const btnTheme         = $('btn-theme');
+const btnReset         = $('btn-reset');
 const editOverlay      = $('edit-overlay');
 const editTitleInput   = $('edit-title');
 const editStepsList    = $('edit-steps-list');
@@ -346,10 +347,31 @@ function renderEditSteps(steps) {
     const li = document.createElement('li');
     li.className = 'edit-step-item';
     li.dataset.index = i;
+
+    // For step types with an editable value, render an inline input instead of
+    // a static sub-label so the user can update the value directly.
+    let editableHtml;
+    if (step.type === 'change') {
+      editableHtml = `<input class="edit-step-value" type="text"
+        data-index="${i}" data-field="value"
+        value="${escapeHtml(step.value ?? '')}" placeholder="(empty)" />`;
+    } else if (step.type === 'navigate') {
+      editableHtml = `<input class="edit-step-value" type="text"
+        data-index="${i}" data-field="url"
+        value="${escapeHtml(step.url ?? '')}" />`;
+    } else if (step.type === 'wait') {
+      const secs = ((step.duration ?? 0) / 1000).toFixed(1);
+      editableHtml = `<input class="edit-step-value edit-step-value--narrow" type="number"
+        data-index="${i}" data-field="duration"
+        value="${secs}" min="0.1" step="0.1" /><span class="edit-step-unit">s</span>`;
+    } else {
+      editableHtml = sub ? `<span class="edit-step-sub">${escapeHtml(sub)}</span>` : '';
+    }
+
     li.innerHTML = `
       <span class="edit-step-icon">${icon}</span>
       <span class="edit-step-label">${escapeHtml(main)}</span>
-      ${sub ? `<span class="edit-step-sub">${escapeHtml(sub)}</span>` : ''}
+      ${editableHtml}
       <button class="btn-delete-edit-step" title="Delete step">×</button>
     `;
     editStepsList.appendChild(li);
@@ -426,6 +448,14 @@ btnRunAll.addEventListener('click', async () => {
   batchSummary.textContent = '';
   batchSection.classList.add('hidden');
   await send(MSG.RUN_ALL, { tabId });
+});
+
+// Reset — clears any stuck state in the service worker
+btnReset.addEventListener('click', async () => {
+  await send(MSG.RESET_STATE);
+  runSection.classList.add('hidden');
+  batchSection.classList.add('hidden');
+  setMode(RecordingState.IDLE);
 });
 
 // Abort
@@ -667,6 +697,26 @@ editStepsList.addEventListener('click', e => {
   renderEditSteps(editingRecording.steps);
 });
 
+// Inline value editing — update the step object as the user types
+editStepsList.addEventListener('input', e => {
+  const input = e.target.closest('.edit-step-value');
+  if (!input || !editingRecording) return;
+  const idx = Number(input.dataset.index);
+  const step = editingRecording.steps[idx];
+  if (!step) return;
+
+  const field = input.dataset.field;
+  if (field === 'value') {
+    step.value = input.value;
+  } else if (field === 'url') {
+    step.url = input.value;
+    if (step.assertedEvents?.[0]) step.assertedEvents[0].url = input.value;
+  } else if (field === 'duration') {
+    const secs = parseFloat(input.value);
+    if (!isNaN(secs) && secs > 0) step.duration = Math.round(secs * 1000);
+  }
+});
+
 btnEditSave.addEventListener('click', async () => {
   const title = editTitleInput.value.trim();
   if (!title) { editTitleInput.focus(); return; }
@@ -707,4 +757,6 @@ async function loadRecordings() {
   renderRecordings(enriched);
 }
 
-loadRecordings();
+// On open: reset any stale SW state (e.g. after a page refresh or extension reload),
+// then load the recordings list.
+send(MSG.RESET_STATE).catch(() => {}).finally(() => loadRecordings());

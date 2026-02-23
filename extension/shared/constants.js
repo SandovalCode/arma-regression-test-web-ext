@@ -9,6 +9,7 @@ export const MSG = {
   RUN_RECORDING:    'RUN_RECORDING',
   RUN_ALL:          'RUN_ALL',
   ABORT_RUN:        'ABORT_RUN',
+  RESET_STATE:      'RESET_STATE',      // sidepanel → SW: force-clear all recording/replay state
 
   // Storage
   DELETE_RECORDING: 'DELETE_RECORDING',

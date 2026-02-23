@@ -114,6 +114,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: true });
         break;
 
+      case MSG.RESET_STATE:
+        // Force-clear all recording and replay state.
+        // Called on sidepanel init and by the manual reset button.
+        await forceReset();
+        sendResponse({ ok: true });
+        break;
+
       // ── Storage ──
       case MSG.GET_RECORDINGS: {
         const recordings = await getRecordings();
@@ -320,6 +327,33 @@ async function abortRecording() {
       func: () => { window.__recorderCleanup?.(); },
     });
   } catch (_) {}
+}
+
+async function forceReset() {
+  // 1. Tear down any active recording
+  if (recordingState.active) {
+    recordingState.active = false;
+    chrome.webNavigation.onDOMContentLoaded.removeListener(onNavCommitted);
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: recordingState.tabId, allFrames: true },
+        func: () => { window.__recorderCleanup?.(); },
+      });
+    } catch (_) {}
+  }
+  recordingState = { active: false, tabId: null, steps: [] };
+
+  // 2. Tear down any active replay
+  if (replayState.active && replayState.tabId) {
+    try { await chrome.debugger.detach({ tabId: replayState.tabId }); } catch (_) {}
+  }
+  replayState = { active: false, aborted: false, tabId: null };
+
+  // 3. Stop keepalive alarm
+  stopKeepalive();
+
+  // 4. Notify sidepanel so it resets its UI to idle
+  broadcast(MSG.RECORDING_STATE, { recording: false });
 }
 
 // ── Replay ─────────────────────────────────────────────────────────────────────

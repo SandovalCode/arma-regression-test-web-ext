@@ -64,6 +64,13 @@ header h1 {
   letter-spacing: 0.01em;
 }
 
+/* ── Header actions (reset + theme toggle) ── */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ── Theme toggle ── */
 .theme-toggle {
   background: none;
@@ -77,6 +84,20 @@ header h1 {
   transition: border-color 0.15s, color 0.15s;
 }
 .theme-toggle:hover { border-color: var(--muted); color: var(--text); }
+
+/* ── Reset button ── */
+#btn-reset {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  cursor: pointer;
+  padding: 3px 7px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  transition: border-color 0.15s, color 0.15s, transform 0.2s;
+}
+#btn-reset:hover { border-color: var(--border); color: var(--text); transform: rotate(-30deg); }
 
 /* ── Sections ── */
 section {
@@ -439,8 +460,24 @@ input[type="text"]::placeholder { color: var(--muted); }
 }
 .edit-step-item:hover { background: rgba(99,102,241,0.08); }
 .edit-step-icon { flex-shrink: 0; }
-.edit-step-label { flex: 1; color: var(--text); }
-.edit-step-sub { color: var(--muted); font-size: 11px; }
+.edit-step-label { flex-shrink: 0; color: var(--text); }
+.edit-step-sub { color: var(--muted); font-size: 11px; flex: 1; }
+.edit-step-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-left: 4px;
+  outline: none;
+  font-family: inherit;
+}
+.edit-step-value:focus { border-color: var(--accent); }
+.edit-step-value--narrow { flex: 0 0 56px; }
+.edit-step-unit { font-size: 11px; color: var(--muted); margin-left: 3px; flex-shrink: 0; }
 .btn-delete-edit-step {
   display: none;
   align-items: center;
