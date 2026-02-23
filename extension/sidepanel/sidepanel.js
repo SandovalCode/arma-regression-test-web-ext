@@ -283,7 +283,7 @@ function appendFeedItem(step) {
   const { main, sub } = stepLabel(step);
   const li = document.createElement('li');
   li.className = 'record-feed-item';
-  li.dataset.type = step.type; // used by the dblclick inline-edit handler
+  li.dataset.type = step.type;
   li.innerHTML = `
     <span class="record-feed-icon">${icon}</span>
     <span class="record-feed-label">${escapeHtml(main)}</span>
@@ -392,8 +392,6 @@ recordFeed.addEventListener('click', async e => {
   stepCountEl.textContent = state.recordingStepCount;
 });
 
-// Double-click a "Type" step in the feed to edit its value inline.
-// Enter confirms, Escape cancels.
 recordFeed.addEventListener('dblclick', e => {
   const li = e.target.closest('.record-feed-item');
   if (!li || li.dataset.type !== 'change') return;
@@ -450,8 +448,8 @@ btnStartRecord.addEventListener('click', async () => {
   state.recordingStepCount = 0;
   stepCountEl.textContent = '0';
   recordFeed.innerHTML = '';   // clear feed from previous session
+  setMode(RecordingState.RECORDING);  // set BEFORE sending so RECORD_STEP arrives in the right mode
   await send(MSG.START_RECORDING, { tabId });
-  setMode(RecordingState.RECORDING);
 });
 
 // Stop recording → show dialog

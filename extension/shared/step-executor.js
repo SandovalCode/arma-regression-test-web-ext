@@ -24,7 +24,8 @@ export async function executeStep(step, tabId, frameContextMap, clipboardVars, c
     case 'change':         return execChange(step, tabId, contextId, cdp);
     case 'keyDown':        return execKeyDown(step, tabId, cdp);
     case 'keyUp':          return execKeyUp(step, tabId, cdp);
-    case 'waitForElement': return execWaitForElement(step, tabId, contextId, cdp);
+    case 'waitForElement':  return execWaitForElement(step, tabId, contextId, cdp);
+    case 'waitForPageLoad': return execWaitForPageLoad(tabId, cdp);
     case 'scroll':         return execScroll(step, tabId, contextId, cdp);
     case 'copy':           return execCopy(step, tabId, contextId, clipboardVars, cdp);
     case 'paste':          return execPaste(step, tabId, contextId, clipboardVars, cdp);
@@ -64,31 +65,40 @@ async function execSetViewport(step, tabId, cdp) {
 
 async function execNavigate(step, tabId, cdp) {
   const targetUrl = step.url ?? '';
+  if (!targetUrl) return;
 
-  // Check if the tab is already navigating (e.g., a preceding click step triggered it)
-  // or already at the target URL. Use chrome.tabs.get — available in the SW context.
   const tab = await chrome.tabs.get(tabId);
 
   if (tab.status === 'loading') {
-    // Navigation already in progress — wait for it to complete instead of
-    // calling Page.navigate again (which would interrupt the ongoing load).
-    await waitForNavigation(tabId, NAV_TIMEOUT_MS);
-    await sleep(300);
-    return;
-  }
-
-  if (targetUrl && normalizeUrl(tab.url ?? '') === normalizeUrl(targetUrl)) {
+    // tab.pendingUrl is the in-flight destination URL (more reliable than tab.url here).
+    const pendingUrl = tab.pendingUrl || tab.url || '';
+    if (normalizeUrl(pendingUrl) === normalizeUrl(targetUrl)) {
+      // Already loading to the right URL — just wait for it.
+      await waitForNavigation(tabId, NAV_TIMEOUT_MS);
+      await sleep(600);
+      return;
+    }
+    // Loading to a DIFFERENT URL (e.g. a click-triggered navigation going somewhere else).
+    // Wait for it to settle, then fall through to navigate explicitly to our target.
+    await waitForNavigation(tabId, NAV_TIMEOUT_MS).catch(() => {});
+    // Re-check after the load completed
+    const settled = await chrome.tabs.get(tabId);
+    if (normalizeUrl(settled.url ?? '') === normalizeUrl(targetUrl)) {
+      await sleep(600);
+      return;
+    }
+  } else if (normalizeUrl(tab.url ?? '') === normalizeUrl(targetUrl)) {
     // Already at the target URL and fully loaded — nothing to do.
     await sleep(300);
     return;
   }
 
-  // Explicit navigation needed (e.g., address-bar navigation recorded without a click).
+  // Explicit navigation to the target URL.
   const navPromise = waitForNavigation(tabId, NAV_TIMEOUT_MS);
   await cdp(tabId, 'Page.navigate', { url: targetUrl });
   await navPromise;
-  // Small settle delay for JS frameworks to initialise
-  await sleep(300);
+  // Longer settle: give JS frameworks (React, Angular, Vue) time to boot after load.
+  await sleep(600);
 }
 
 function normalizeUrl(url) {
@@ -193,31 +203,106 @@ async function execChange(step, tabId, contextId, cdp) {
       returnByValue: true,
     });
   } else {
-    // For text inputs: focus, clear, type, fire events
+    // For text inputs: focus, clear, then type char by char to trigger autocomplete
     await cdp(tabId, 'Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
+      functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; this.dispatchEvent(new Event("input", { bubbles: true })); }',
       returnByValue: true,
     });
 
-    // Type the value character by character using Input.insertText
-    if (value) {
-      await cdp(tabId, 'Input.insertText', { text: value });
+    // Type only the first 10 characters one by one to trigger autocomplete
+    const typingChars = [...value].slice(0, 10);
+    for (const char of typingChars) {
+      await cdp(tabId, 'Input.insertText', { text: char });
+      await cdp(tabId, 'Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: 'function() { this.dispatchEvent(new Event("input",  { bubbles: true })); this.dispatchEvent(new Event("change", { bubbles: true })); }',
+        returnByValue: true,
+      });
+      await sleep(110);
     }
 
-    // Fire reactivity events (React / Angular / Vue)
-    await cdp(tabId, 'Runtime.callFunctionOn', {
-      objectId,
-      functionDeclaration: `function(v) {
-        // Update value in case insertText didn't set it (some cases)
-        if (this.value !== v) this.value = v;
-        this.dispatchEvent(new Event('input',  { bubbles: true }));
-        this.dispatchEvent(new Event('change', { bubbles: true }));
-      }`,
-      arguments: [{ value }],
-      returnByValue: true,
-    });
+    // Wait for autocomplete dropdown to appear
+    await sleep(350);
+
+    // Try to find and click a matching autocomplete option
+    const clicked = await tryClickAutocompleteOption(value, tabId, contextId, cdp);
+
+    if (!clicked) {
+      // No autocomplete option visible — fire final change event so the form knows the value
+      await cdp(tabId, 'Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: `function(v) {
+          if (this.value !== v) this.value = v;
+          this.dispatchEvent(new Event('change', { bubbles: true }));
+        }`,
+        arguments: [{ value }],
+        returnByValue: true,
+      });
+    }
   }
+}
+
+// ── Autocomplete option picker ──────────────────────────────────────────────────
+// After typing into an autocomplete field, find the visible option whose text
+// matches `targetText` exactly and click it.  Falls back to partial match.
+async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
+  const result = await cdp(tabId, 'Runtime.evaluate', {
+    expression: `
+      (function(target) {
+        const selectors = [
+          '[role="option"]',
+          '[role="listbox"] [role="option"]',
+          '[role="listbox"] li',
+          '[role="listbox"] *',
+          'datalist option',
+          'ul[class*="suggest"] li',
+          'ul[class*="auto"] li',
+          'div[class*="suggest"] *',
+          'div[class*="dropdown"] *',
+        ];
+
+        // Collect all visible candidate elements
+        const seen = new Set();
+        const candidates = [];
+        for (const sel of selectors) {
+          for (const el of document.querySelectorAll(sel)) {
+            if (!seen.has(el)) {
+              seen.add(el);
+              candidates.push(el);
+            }
+          }
+        }
+
+        // Exact match first, then partial
+        for (const pass of ['exact', 'partial']) {
+          for (const el of candidates) {
+            const text = (el.textContent ?? el.getAttribute('value') ?? '').trim();
+            const matches = pass === 'exact' ? text === target : text.toLowerCase().includes(target.toLowerCase());
+            if (!matches) continue;
+            // Must be visible
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            if (el.offsetParent === null) continue;
+            return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+          }
+        }
+        return null;
+      })(${JSON.stringify(targetText)})
+    `,
+    contextId,
+    returnByValue: true,
+  });
+
+  const coords = result?.result?.value;
+  if (!coords) return false;
+
+  await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved',    x: coords.x, y: coords.y, button: 'none', clickCount: 0 });
+  await sleep(50);
+  await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+  await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+
+  return true;
 }
 
 // ── keyDown / keyUp ────────────────────────────────────────────────────────────
@@ -251,6 +336,19 @@ async function execKeyUp(step, tabId, cdp) {
 
 async function execWaitForElement(step, tabId, contextId, cdp) {
   await waitForSelector(step.selectors, tabId, contextId, cdp, STEP_TIMEOUT_MS);
+}
+
+async function execWaitForPageLoad(tabId, cdp) {
+  const deadline = Date.now() + NAV_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const res = await cdp(tabId, 'Runtime.evaluate', {
+      expression: 'document.readyState',
+      returnByValue: true,
+    });
+    if (res?.result?.value === 'complete') return;
+    await sleep(500);
+  }
+  // Don't throw — if the page never hits "complete" we just continue
 }
 
 // ── scroll ─────────────────────────────────────────────────────────────────────

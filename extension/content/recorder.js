@@ -49,15 +49,16 @@
   function buildCSSSelector(el) {
     if (!el || el === document.body) return null;
 
-    // Prefer id
-    if (el.id && /^[a-zA-Z][\w-]*$/.test(el.id)) return `#${el.id}`;
+    // Prefer id — CSS.escape handles any id value (leading underscores, digits, etc.)
+    if (el.id) return `#${CSS.escape(el.id)}`;
 
-    // Prefer unique data-* attribute
+    // Prefer unique data-* attribute (skip browser-extension injected attributes)
+    const INJECTED_ATTR_PREFIXES = ['data-dashlane-', 'data-lastpass-', 'data-1p-'];
     for (const attr of el.attributes) {
-      if (attr.name.startsWith('data-') && attr.value) {
-        const sel = `${el.tagName.toLowerCase()}[${attr.name}="${CSS.escape(attr.value)}"]`;
-        if (document.querySelectorAll(sel).length === 1) return sel;
-      }
+      if (!attr.name.startsWith('data-') || !attr.value) continue;
+      if (INJECTED_ATTR_PREFIXES.some(p => attr.name.startsWith(p))) continue;
+      const sel = `${el.tagName.toLowerCase()}[${attr.name}="${CSS.escape(attr.value)}"]`;
+      if (document.querySelectorAll(sel).length === 1) return sel;
     }
 
     // name attribute (inputs, selects)

@@ -406,7 +406,24 @@ async function runRecording(recording, tabId) {
       });
 
       try {
+        // Auto: waitForElement before any click so the element is ready
+        if ((step.type === 'click' || step.type === 'doubleClick') && step.selectors?.length) {
+          await executeStep(
+            { type: 'waitForElement', selectors: step.selectors, target: step.target },
+            tabId, frameContextMap, clipboardVars, cdp, variables
+          ).catch(() => {}); // non-fatal — proceed even if element not found yet
+        }
+
         await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
+
+        // Auto: waitForPageLoad after navigate so the next action waits for the page
+        if (step.type === 'navigate' && !replayState.aborted) {
+          await executeStep(
+            { type: 'waitForPageLoad' },
+            tabId, frameContextMap, clipboardVars, cdp, variables
+          ).catch(() => {});
+        }
+
         await new Promise(r => setTimeout(r, 400)); // 400 ms gap between actions
 
         const durationMs = Date.now() - stepStart;
