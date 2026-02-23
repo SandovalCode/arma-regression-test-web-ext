@@ -475,6 +475,27 @@ input[type="text"]::placeholder { color: var(--muted); }
   margin-top: 6px;
 }
 
+/* ── Wait for Time Dialog ── */
+.wait-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.wait-duration-row input {
+  width: 80px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+.wait-unit {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 /* ── Overlay / Dialog ── */
 .overlay {
   position: fixed;

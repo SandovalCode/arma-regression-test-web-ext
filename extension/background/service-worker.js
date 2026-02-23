@@ -106,6 +106,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
       case MSG.ABORT_RUN:
         replayState.aborted = true;
+        // Detach the debugger immediately so any in-flight CDP call throws right away,
+        // terminating the current step without waiting for it to finish naturally.
+        if (replayState.active && replayState.tabId) {
+          chrome.debugger.detach({ tabId: replayState.tabId }).catch(() => {});
+        }
         sendResponse({ ok: true });
         break;
 
@@ -430,7 +435,10 @@ async function runRecording(recording, tabId) {
     if (attached) {
       try { await chrome.debugger.detach({ tabId }); } catch (_) {}
     }
-    replayState = { active: false, aborted: false, tabId: null };
+    // Preserve `aborted` so runAll's outer loop can detect a mid-batch abort.
+    // The next call to runRecording resets it to false at its own start.
+    replayState.active = false;
+    replayState.tabId = null;
     stopKeepalive();
   }
 }
@@ -485,11 +493,22 @@ chrome.contextMenus.removeAll(() => {
     title: 'Paste variable',
     contexts: ['all'],
   });
+  chrome.contextMenus.create({
+    id: 'record-wait-time',
+    title: 'Wait for time',
+    contexts: ['all'],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener((_info, tab) => {
   if (!recordingState.active || tab.id !== recordingState.tabId) return;
-  if (!['record-hover', 'record-wait', 'record-variable', 'record-paste-variable'].includes(_info.menuItemId)) return;
+  if (!['record-hover', 'record-wait', 'record-variable', 'record-paste-variable', 'record-wait-time'].includes(_info.menuItemId)) return;
+
+  // Wait-for-time doesn't need element info — handle it before the elInfo check.
+  if (_info.menuItemId === 'record-wait-time') {
+    broadcast(MSG.SHOW_WAIT_DIALOG, {});
+    return;
+  }
 
   // Use the element info stored by the content script via STORE_CONTEXT_EL message.
   const elInfo = lastContextMenuEl;

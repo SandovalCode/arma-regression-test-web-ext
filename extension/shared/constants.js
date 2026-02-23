@@ -28,6 +28,7 @@ export const MSG = {
   RECORDING_STATE:      'RECORDING_STATE',       // recording started/stopped confirmation
   SHOW_VARIABLE_DIALOG:       'SHOW_VARIABLE_DIALOG',       // SW → sidepanel: open the save-variable dialog
   SHOW_PASTE_VARIABLE_DIALOG: 'SHOW_PASTE_VARIABLE_DIALOG', // SW → sidepanel: open the paste-variable dialog
+  SHOW_WAIT_DIALOG:           'SHOW_WAIT_DIALOG',           // SW → sidepanel: open the wait-for-time dialog
 };
 
 export const StepStatus = {

@@ -128,6 +128,22 @@
       </div>
     </div>
 
+    <!-- ── Wait for Time Dialog ── -->
+    <div id="wait-time-overlay" class="hidden overlay">
+      <div class="dialog">
+        <h3>Wait for time</h3>
+        <label class="edit-label">Duration</label>
+        <div class="wait-duration-row">
+          <input id="wait-duration" type="number" min="0.1" step="0.1" value="1" />
+          <span class="wait-unit">seconds</span>
+        </div>
+        <div class="dialog-actions">
+          <button id="btn-wait-save" class="btn btn-primary">Add</button>
+          <button id="btn-wait-cancel" class="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Edit Recording Overlay ── -->
     <div id="edit-overlay" class="hidden overlay">
       <div class="dialog dialog-wide">

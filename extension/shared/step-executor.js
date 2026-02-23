@@ -30,6 +30,7 @@ export async function executeStep(step, tabId, frameContextMap, clipboardVars, c
     case 'paste':          return execPaste(step, tabId, contextId, clipboardVars, cdp);
     case 'saveVariable':   return execSaveVariable(step, tabId, contextId, cdp, variables);
     case 'pasteVariable':  return execPasteVariable(step, tabId, contextId, cdp, variables);
+    case 'wait':           return sleep(Math.max(0, step.duration ?? 0));
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
       console.warn(`[step-executor] Unknown step type: ${step.type} — skipping`);

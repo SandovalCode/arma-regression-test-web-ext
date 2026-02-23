@@ -55,6 +55,10 @@ const pasteVarSelect   = $('paste-var-select');
 const pasteVarEmpty    = $('paste-var-empty');
 const btnPasteVarSave  = $('btn-paste-var-save');
 const btnPasteVarCancel = $('btn-paste-var-cancel');
+const waitTimeOverlay  = $('wait-time-overlay');
+const waitDurationInput = $('wait-duration');
+const btnWaitSave      = $('btn-wait-save');
+const btnWaitCancel    = $('btn-wait-cancel');
 
 // ── Theme toggle ───────────────────────────────────────────────────────────────
 function applyTheme(light) {
@@ -206,6 +210,7 @@ function showRunSection(title) {
   runSubtitle.textContent = '';
   progressBar.style.width = '0%';
   stepsList.innerHTML = '';
+  btnAbort.disabled = false;
   runSection.classList.remove('hidden');
   batchSection.classList.add('hidden');
   setMode(RecordingState.REPLAYING);
@@ -227,6 +232,7 @@ const STEP_ICONS = {
   setViewport:    '🖥️',
   saveVariable:   '📌',
   pasteVariable:  '📋',
+  wait:           '⏱️',
 };
 
 function stepLabel(step) {
@@ -264,6 +270,8 @@ function stepLabel(step) {
       return { main: `Save "${step.variableName}"`, sub: String(step.defaultValue ?? '').slice(0, 30) };
     case 'pasteVariable':
       return { main: `Paste "${step.variableName}"`, sub: selectorHint };
+    case 'wait':
+      return { main: `Wait ${(step.duration / 1000).toFixed(1)}s`, sub: '' };
     default:
       return { main: step.type, sub: '' };
   }
@@ -423,6 +431,9 @@ btnRunAll.addEventListener('click', async () => {
 // Abort
 btnAbort.addEventListener('click', () => {
   send(MSG.ABORT_RUN);
+  // Give immediate visual feedback while waiting for RUN_COMPLETE from the SW
+  runTitle.textContent = 'Stopping…';
+  btnAbort.disabled = true;
 });
 
 // Delegated click on recording list (run / delete / edit / history)
@@ -536,6 +547,12 @@ chrome.runtime.onMessage.addListener((msg) => {
       pasteVarOverlay.classList.remove('hidden');
       break;
     }
+
+    case MSG.SHOW_WAIT_DIALOG:
+      waitDurationInput.value = '1';
+      waitTimeOverlay.classList.remove('hidden');
+      waitDurationInput.focus();
+      break;
   }
 });
 
@@ -606,6 +623,36 @@ btnPasteVarSave.addEventListener('click', async () => {
 btnPasteVarCancel.addEventListener('click', () => {
   pasteVarOverlay.classList.add('hidden');
   pendingPasteVariableStep = null;
+});
+
+// ── Wait for time dialog event listeners ───────────────────────────────────────
+
+btnWaitSave.addEventListener('click', async () => {
+  const seconds = parseFloat(waitDurationInput.value);
+  if (!seconds || seconds <= 0) { waitDurationInput.focus(); return; }
+
+  const step = {
+    type: 'wait',
+    target: 'main',
+    duration: Math.round(seconds * 1000),
+  };
+
+  await send(MSG.ADD_RECORDING_STEP, { step });
+
+  state.recordingStepCount++;
+  stepCountEl.textContent = state.recordingStepCount;
+  appendFeedItem(step);
+
+  waitTimeOverlay.classList.add('hidden');
+});
+
+btnWaitCancel.addEventListener('click', () => {
+  waitTimeOverlay.classList.add('hidden');
+});
+
+waitDurationInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') btnWaitSave.click();
+  if (e.key === 'Escape') btnWaitCancel.click();
 });
 
 // ── Edit overlay event listeners ───────────────────────────────────────────────

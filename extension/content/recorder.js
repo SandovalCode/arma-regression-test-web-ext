@@ -21,6 +21,8 @@
   let lastSelectionEl = null;
   let lastCopiedVarName = null;
   let pendingInputChange = null;  // debounce: fire change step only on blur/change
+  let _clickTimer = null;         // double-click detection: delay single clicks
+  let _pendingClickStep = null;
   
   // ── Send a step to the service worker ────────────────────────────────────────
   let _lastStepKey = '';
@@ -172,13 +174,44 @@
     const el = e.target;
     if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
 
-    // Skip clicks that are part of a copy context menu (contextmenu handles those)
+    const rect = el.getBoundingClientRect();
+    const offsetX = Math.round(e.clientX - rect.left);
+    const offsetY = Math.round(e.clientY - rect.top);
+
+    const step = {
+      type: 'click',
+      target: 'main',
+      selectors: generateSelectors(el),
+      offsetX: Math.max(0, offsetX),
+      offsetY: Math.max(0, offsetY),
+      ...frameInfo,
+    };
+
+    // Delay sending so that a dblclick can cancel these and record doubleClick instead.
+    clearTimeout(_clickTimer);
+    _pendingClickStep = step;
+    _clickTimer = setTimeout(() => {
+      if (_pendingClickStep) {
+        sendStep(_pendingClickStep);
+        _pendingClickStep = null;
+      }
+    }, 260);
+  }
+
+  function handleDoubleClick(e) {
+    const el = e.target;
+    if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
+
+    // Cancel the two pending single-click steps fired before dblclick.
+    clearTimeout(_clickTimer);
+    _pendingClickStep = null;
+
     const rect = el.getBoundingClientRect();
     const offsetX = Math.round(e.clientX - rect.left);
     const offsetY = Math.round(e.clientY - rect.top);
 
     sendStep({
-      type: 'click',
+      type: 'doubleClick',
       target: 'main',
       selectors: generateSelectors(el),
       offsetX: Math.max(0, offsetX),
@@ -347,6 +380,7 @@
   // Note: navigate steps are recorded by the service worker via webNavigation.onDOMContentLoaded,
   // which captures the correct destination URL. beforeunload is not used here.
   document.addEventListener('click',       handleClick,       { capture: true });
+  document.addEventListener('dblclick',    handleDoubleClick, { capture: true });
   document.addEventListener('mouseup',     handleMouseUp,     { capture: true });
   document.addEventListener('input',       handleInput,       { capture: true });
   document.addEventListener('change',      handleChange,      { capture: true });
@@ -360,7 +394,10 @@
   // ── Cleanup function (called by service worker on stop/abort) ─────────────────
   window.__recorderCleanup = function () {
     document.removeEventListener('click',       handleClick,       { capture: true });
+    document.removeEventListener('dblclick',    handleDoubleClick, { capture: true });
     document.removeEventListener('mouseup',     handleMouseUp,     { capture: true });
+    clearTimeout(_clickTimer);
+    _pendingClickStep = null;
     document.removeEventListener('input',       handleInput,       { capture: true });
     document.removeEventListener('change',      handleChange,      { capture: true });
     document.removeEventListener('blur',        handleBlur,        { capture: true });
