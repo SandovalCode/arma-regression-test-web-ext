@@ -141,8 +141,19 @@
     const aria = getAriaLabel(el);
     if (aria) selectors.push([`aria/${aria}`]);
 
+    // For submit/button inputs, add value-based selector first (most stable label)
+    if (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button') && el.value) {
+      selectors.push([`input[type="${el.type}"][value="${CSS.escape(el.value)}"]`]);
+    }
+
     const css = buildCSSSelector(el);
     if (css) selectors.push([css]);
+
+    // Always include name attribute as an additional fallback for form elements
+    if (el.name) {
+      const nameSel = `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]`;
+      if (!selectors.some(s => s[0] === nameSel)) selectors.push([nameSel]);
+    }
 
     const xpath = buildXPath(el);
     if (xpath) selectors.push([`xpath/${xpath}`]);
@@ -245,11 +256,17 @@
     const value = pendingInputChange?.el === el ? el.value : (el.value ?? '');
     pendingInputChange = null;
 
+    // For <select>, capture the visible option text so the recording is readable
+    const label = el.tagName === 'SELECT'
+      ? (el.options[el.selectedIndex]?.text?.trim() ?? value)
+      : undefined;
+
     sendStep({
       type: 'change',
       target: 'main',
       selectors: generateSelectors(el),
       value,
+      ...(label !== undefined ? { label } : {}),
       ...frameInfo,
     });
   }

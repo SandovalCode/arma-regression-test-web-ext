@@ -222,6 +222,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case MSG.RECORD_STEP:
         if (recordingState.active && payload.step) {
           recordingState.steps.push(payload.step);
+          console.log(`[Recorder] step ${recordingState.steps.length}:`, JSON.stringify(payload.step, null, 2));
           // No re-broadcast: sidepanel already receives this message directly from the content script.
           // (Hover steps created in the SW are broadcast separately via the context menu handler.)
         }

@@ -181,9 +181,12 @@ async function resolveText(text, tabId, contextId, cdp) {
     (function() {
       const text = ${JSON.stringify(text)};
       const tags = 'a,button,span,div,td,th,li,label,p,h1,h2,h3,h4,h5,h6,input[type="button"],input[type="submit"]';
-      const el = [...document.querySelectorAll(tags)].find(
-        e => e.offsetParent !== null && e.textContent.trim() === text
-      );
+      const el = [...document.querySelectorAll(tags)].find(e => {
+        if (e.offsetParent === null) return false;
+        // For input[type="submit"] / input[type="button"], the label is in .value, not textContent
+        if (e.tagName === 'INPUT') return e.value === text;
+        return e.textContent.trim() === text;
+      });
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return { x: r.left + window.scrollX, y: r.top + window.scrollY, width: r.width, height: r.height };

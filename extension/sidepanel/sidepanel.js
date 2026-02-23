@@ -250,7 +250,9 @@ function stepLabel(step) {
     case 'hover':
       return { main: 'Hover', sub: selectorHint };
     case 'change':
-      return { main: 'Type', sub: `"${String(step.value ?? '').slice(0, 30)}"` };
+      return step.label !== undefined
+        ? { main: 'Select', sub: `"${String(step.label).slice(0, 30)}"` }
+        : { main: 'Type',   sub: `"${String(step.value ?? '').slice(0, 30)}"` };
     case 'navigate':
       return { main: 'Navigate', sub: (step.url ?? '').replace(/^https?:\/\//, '').slice(0, 40) };
     case 'keyDown':
