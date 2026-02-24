@@ -271,10 +271,12 @@
     if (el.tagName === 'SELECT') {
       // Record as a dedicated selectOption step with full option details
       const selectedOption = el.options[el.selectedIndex];
+      const selectors = generateSelectors(el);
+      sendStep({ type: 'waitForElement', target: 'main', selectors, ...frameInfo });
       sendStep({
         type: 'selectOption',
         target: 'main',
-        selectors: generateSelectors(el),
+        selectors,
         value:        el.value,                          // option value attr (used to set select.value)
         label:        selectedOption?.text?.trim() ?? el.value, // visible text (shown in UI)
         optionIndex:  el.selectedIndex,                  // fallback if value changes
@@ -286,10 +288,12 @@
     // Plain text input
     const value = pendingInputChange?.el === el ? el.value : (el.value ?? '');
     pendingInputChange = null;
+    const selectors = generateSelectors(el);
+    sendStep({ type: 'waitForElement', target: 'main', selectors, ...frameInfo });
     sendStep({
       type: 'change',
       target: 'main',
-      selectors: generateSelectors(el),
+      selectors,
       value,
       ...frameInfo,
     });
@@ -310,10 +314,12 @@
       if (!pendingInputChange || pendingInputChange.el !== capturedEl) return;
       const value = capturedEl.value ?? '';
       pendingInputChange = null;
+      const selectors = generateSelectors(capturedEl);
+      sendStep({ type: 'waitForElement', target: 'main', selectors, ...frameInfo });
       sendStep({
         type: 'change',
         target: 'main',
-        selectors: generateSelectors(capturedEl),
+        selectors,
         value,
         ...frameInfo,
       });

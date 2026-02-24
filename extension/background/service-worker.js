@@ -187,6 +187,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case MSG.ADD_RECORDING_STEP: {
         if (recordingState.active && payload.step) {
           const step = payload.step;
+
+          // Auto-prepend a waitForElement for steps that target a specific element.
+          if ((step.type === 'saveVariable' || step.type === 'pasteVariable') && step.selectors?.length) {
+            const waitStep = {
+              type: 'waitForElement',
+              target: step.target ?? 'main',
+              selectors: step.selectors,
+              ...(step.frame?.length ? { frame: step.frame } : {}),
+            };
+            recordingState.steps.push(waitStep);
+            broadcast(MSG.RECORD_STEP, { step: waitStep });
+          }
+
           recordingState.steps.push(step);
 
           // For pasteVariable: also fill the target field immediately during recording
@@ -272,7 +285,7 @@ async function startRecording(tabId) {
     });
   } catch (_) { /* tab may not be ready yet, proceed anyway */ }
 
-  // Record the starting URL as the first step so replay always begins on the right page
+  // Record the current page as the first step so replay always begins on the right page.
   const tab = await chrome.tabs.get(tabId);
   const startUrl = tab.url ?? '';
   const firstStep = {
@@ -394,6 +407,12 @@ async function runRecording(recording, tabId) {
   frameContextMap = new Map();
 
   startKeepalive();
+
+  // Start every run from a blank page so there's no leftover state from a
+  // previous session. The first recorded step (navigate) will go to the real URL.
+  await chrome.tabs.update(tabId, { url: 'about:blank' });
+  // Give the browser a moment to load blank before attaching the debugger.
+  await new Promise(r => setTimeout(r, 300));
 
   const runId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
