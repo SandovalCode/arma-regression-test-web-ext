@@ -81,7 +81,7 @@ async function execNavigate(step, tabId, cdp) {
     }
     // Loading to a DIFFERENT URL (e.g. a click-triggered navigation going somewhere else).
     // Wait for it to settle, then fall through to navigate explicitly to our target.
-    await waitForNavigation(tabId, NAV_TIMEOUT_MS).catch(() => {});
+    await waitForNavigation(tabId, NAV_TIMEOUT_MS);
     // Re-check after the load completed
     const settled = await chrome.tabs.get(tabId);
     if (normalizeUrl(settled.url ?? '') === normalizeUrl(targetUrl)) {
@@ -112,14 +112,19 @@ function normalizeUrl(url) {
 }
 
 function waitForNavigation(tabId, timeoutMs) {
-  return new Promise((resolve, reject) => {
+  // Resolves when the page fires loadEventFired OR domContentEventFired,
+  // whichever comes first. Never rejects — if neither fires within timeoutMs
+  // we proceed anyway. This handles SPAs (like Salesforce Lightning) that
+  // keep the network busy after load and never fire loadEventFired.
+  return new Promise((resolve) => {
     const timer = setTimeout(() => {
       chrome.debugger.onEvent.removeListener(handler);
-      reject(new Error(`Navigation timed out after ${timeoutMs}ms`));
+      resolve(); // timed out — proceed anyway, don't fail the step
     }, timeoutMs);
 
     function handler(source, method) {
-      if (source.tabId === tabId && method === 'Page.loadEventFired') {
+      if (source.tabId !== tabId) return;
+      if (method === 'Page.loadEventFired' || method === 'Page.domContentEventFired') {
         clearTimeout(timer);
         chrome.debugger.onEvent.removeListener(handler);
         resolve();
@@ -344,16 +349,28 @@ async function execWaitForElement(step, tabId, contextId, cdp) {
 }
 
 async function execWaitForPageLoad(tabId, cdp) {
+  // Some SPAs (e.g. Salesforce Lightning) continuously poll the network and
+  // never reach 'complete'. Strategy:
+  //   • 'complete'     → done immediately (normal pages)
+  //   • 'interactive'  → DOM is ready; wait an extra 2s for JS to render, then proceed
+  //   • still loading after NAV_TIMEOUT_MS → give up and continue anyway
+  const INTERACTIVE_SETTLE_MS = 2000;
   const deadline = Date.now() + NAV_TIMEOUT_MS;
+
   while (Date.now() < deadline) {
     const res = await cdp(tabId, 'Runtime.evaluate', {
       expression: 'document.readyState',
       returnByValue: true,
     });
-    if (res?.result?.value === 'complete') return;
+    const state = res?.result?.value;
+    if (state === 'complete') return;
+    if (state === 'interactive') {
+      await sleep(INTERACTIVE_SETTLE_MS);
+      return;
+    }
     await sleep(500);
   }
-  // Don't throw — if the page never hits "complete" we just continue
+  // Timed out — continue anyway
 }
 
 // ── scroll ─────────────────────────────────────────────────────────────────────
