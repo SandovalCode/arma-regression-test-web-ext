@@ -464,7 +464,7 @@ async function runRecording(recording, tabId) {
           ).catch(err => console.warn(`[Replay] step ${i + 1} waitForPageLoad failed (proceeding):`, err.message));
         }
 
-        await new Promise(r => setTimeout(r, 100)); // 100 ms gap between actions
+        await new Promise(r => setTimeout(r, 50)); // 50 ms gap between actions
 
         const durationMs = Date.now() - stepStart;
         stepResults.push({ index: i, type: step.type, status: 'passed', durationMs });
