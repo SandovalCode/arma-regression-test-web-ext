@@ -191,15 +191,17 @@ async function execChange(step, tabId, contextId, cdp) {
   });
   const tagName = tagRes?.result?.value ?? '';
 
-  if (tagName === 'SELECT') {
-    // For <select>, set .value directly and fire change event
+  // A step recorded from a <select> always has step.label set
+  const isSelectStep = tagName === 'SELECT' || step.label !== undefined;
+
+  if (isSelectStep) {
+    // Assign the recorded option value directly to the select and fire change
     await cdp(tabId, 'Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: `function(v) {
-        this.value = v;
+      functionDeclaration: `function() {
+        this.value = ${JSON.stringify(value)};
         this.dispatchEvent(new Event('change', { bubbles: true }));
       }`,
-      arguments: [{ value }],
       returnByValue: true,
     });
   } else {

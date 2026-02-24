@@ -407,8 +407,8 @@ async function runRecording(recording, tabId) {
       });
 
       try {
-        // Auto: waitForElement before any click so the element is ready
-        if ((step.type === 'click' || step.type === 'doubleClick') && step.selectors?.length) {
+        // Auto: waitForElement before clicks and change steps so the element is ready
+        if ((step.type === 'click' || step.type === 'doubleClick' || step.type === 'change') && step.selectors?.length) {
           console.log(`[Replay] step ${i + 1} auto → waitForElement`, JSON.stringify(step.selectors));
           await executeStep(
             { type: 'waitForElement', selectors: step.selectors, target: step.target },
