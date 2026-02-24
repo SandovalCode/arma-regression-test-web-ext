@@ -154,7 +154,7 @@ function escapeHtml(str) {
 }
 
 // ── Render step progress ───────────────────────────────────────────────────────
-function addOrUpdateStep({ stepIndex, total, status, stepType, durationMs, error }) {
+function addOrUpdateStep({ stepIndex, total, status, stepType, stepDetail, durationMs, error }) {
   // update progress bar
   const pct = total > 0 ? Math.round(((stepIndex + 1) / total) * 100) : 0;
   progressBar.style.width = `${pct}%`;
@@ -175,7 +175,7 @@ function addOrUpdateStep({ stepIndex, total, status, stepType, durationMs, error
   li.className = `step-item ${status}`;
   li.innerHTML = `
     <span class="step-icon">${icons[status] ?? '·'}</span>
-    <span class="step-label">${stepType ?? ''}</span>
+    <span class="step-label">${stepType ?? ''}${stepDetail ? `<span class="step-detail"> ${escapeHtml(stepDetail)}</span>` : ''}</span>
     <span class="step-duration">${dur}</span>
     ${error ? `<div class="step-error">${escapeHtml(error)}</div>` : ''}
   `;
@@ -579,6 +579,8 @@ chrome.runtime.onMessage.addListener((msg) => {
         runSubtitle.textContent = `Step ${failedStep.index + 1} (${failedStep.type}): ${failedStep.error ?? ''}`;
       }
       setMode(RecordingState.IDLE);
+      runSection.classList.remove('hidden'); // keep steps visible after single-test run
+      btnAbort.disabled = true;             // run is done, abort no longer needed
       loadRecordings();
       break;
     }

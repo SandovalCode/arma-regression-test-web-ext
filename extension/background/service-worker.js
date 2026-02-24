@@ -37,6 +37,20 @@ function broadcast(type, payload = {}) {
   chrome.runtime.sendMessage({ type, payload }).catch(() => {});
 }
 
+// ── Step detail for progress display ──────────────────────────────────────────
+function getStepDetail(step) {
+  const sel = step.selectors?.flat?.().find(Boolean) ?? '';
+  switch (step.type) {
+    case 'navigate':    return step.url ?? '';
+    case 'click':
+    case 'doubleClick':
+    case 'hover':       return sel;
+    case 'change':      return `${sel}${step.label !== undefined ? ` → "${step.label}"` : step.value ? ` → "${step.value}"` : ''}`;
+    case 'waitForElement': return sel;
+    default:            return sel;
+  }
+}
+
 // ── Debugger event listener ────────────────────────────────────────────────────
 chrome.debugger.onEvent.addListener((_source, method, params) => {
   if (method === 'Runtime.executionContextCreated') {
@@ -398,12 +412,14 @@ async function runRecording(recording, tabId) {
 
       const step = recording.steps[i];
       const stepStart = Date.now();
+      const stepDetail = getStepDetail(step);
 
       broadcast(MSG.STEP_PROGRESS, {
         stepIndex: i,
         total: recording.steps.length,
         status: 'running',
         stepType: step.type,
+        stepDetail,
       });
 
       try {
@@ -438,6 +454,7 @@ async function runRecording(recording, tabId) {
           total: recording.steps.length,
           status: 'passed',
           stepType: step.type,
+          stepDetail,
           durationMs,
         });
       } catch (err) {
@@ -451,6 +468,7 @@ async function runRecording(recording, tabId) {
           total: recording.steps.length,
           status: 'failed',
           stepType: step.type,
+          stepDetail,
           durationMs,
           error: errorMsg,
         });
