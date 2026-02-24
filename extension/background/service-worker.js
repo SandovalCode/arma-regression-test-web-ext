@@ -435,8 +435,8 @@ async function runRecording(recording, tabId) {
         console.log(`[Replay] step ${i + 1}:`, JSON.stringify(step, null, 2));
         await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
 
-        // Auto: waitForPageLoad after navigate so the next action waits for the page
-        if (step.type === 'navigate' && !replayState.aborted) {
+        // Auto: waitForPageLoad after navigate or select change (which may trigger navigation)
+        if ((step.type === 'navigate' || (step.type === 'change' && step.label !== undefined)) && !replayState.aborted) {
           console.log(`[Replay] step ${i + 1} auto → waitForPageLoad`);
           await executeStep(
             { type: 'waitForPageLoad' },

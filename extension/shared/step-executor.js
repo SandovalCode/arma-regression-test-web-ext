@@ -195,12 +195,13 @@ async function execChange(step, tabId, contextId, cdp) {
   const isSelectStep = tagName === 'SELECT' || step.label !== undefined;
 
   if (isSelectStep) {
-    // Assign the recorded option value directly to the select and fire change
+    // Set the value on the select. Fire change without bubbling so parent form
+    // handlers (which could cause unwanted navigation) are not triggered.
     await cdp(tabId, 'Runtime.callFunctionOn', {
       objectId,
       functionDeclaration: `function() {
         this.value = ${JSON.stringify(value)};
-        this.dispatchEvent(new Event('change', { bubbles: true }));
+        this.dispatchEvent(new Event('change', { bubbles: false, cancelable: true }));
       }`,
       returnByValue: true,
     });
