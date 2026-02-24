@@ -205,28 +205,27 @@ async function execChange(step, tabId, contextId, cdp) {
       returnByValue: true,
     });
   } else {
-    // For text inputs: focus, clear, then type char by char to trigger autocomplete
+    // For text inputs: insert full text then fire events
     await cdp(tabId, 'Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; this.dispatchEvent(new Event("input", { bubbles: true })); }',
+      functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
       returnByValue: true,
     });
 
-    // Type only the first 10 characters one by one to trigger autocomplete
-    const typingChars = [...value].slice(0, 10);
-    for (const char of typingChars) {
-      await cdp(tabId, 'Input.insertText', { text: char });
-      await cdp(tabId, 'Runtime.callFunctionOn', {
-        objectId,
-        functionDeclaration: 'function(c) { this.dispatchEvent(new KeyboardEvent("keydown", { key: c, bubbles: true })); this.dispatchEvent(new Event("change", { bubbles: true })); }',
-        arguments: [{ value: char }],
-        returnByValue: true,
-      });
-      await sleep(110);
+    if (value) {
+      await cdp(tabId, 'Input.insertText', { text: value.slice(0, 10) });
     }
 
-    // Wait for autocomplete dropdown to appear, then click the matching option
-    await sleep(350);
+    await cdp(tabId, 'Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: `function() {
+        this.dispatchEvent(new Event('input',  { bubbles: true }));
+        this.dispatchEvent(new Event('change', { bubbles: true }));
+        this.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+      }`,
+      returnByValue: true,
+    });
+
     await tryClickAutocompleteOption(value, tabId, contextId, cdp);
   }
 }

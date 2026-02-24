@@ -443,6 +443,7 @@ async function runRecording(recording, tabId) {
       } catch (err) {
         const durationMs = Date.now() - stepStart;
         const errorMsg = err.message ?? String(err);
+        console.error(`[Replay] step ${i + 1} (${step.type}) FAILED:`, errorMsg, step);
         stepResults.push({ index: i, type: step.type, status: 'failed', durationMs, error: errorMsg });
 
         broadcast(MSG.STEP_PROGRESS, {

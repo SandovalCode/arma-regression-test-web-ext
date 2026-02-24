@@ -576,7 +576,7 @@ chrome.runtime.onMessage.addListener((msg) => {
       progressBar.style.width = '100%';
       runTitle.textContent = passed ? '✅ Test passed' : '❌ Test failed';
       if (!passed && failedStep) {
-        runSubtitle.textContent = `Failed at step ${failedStep.index + 1}: ${failedStep.type}`;
+        runSubtitle.textContent = `Step ${failedStep.index + 1} (${failedStep.type}): ${failedStep.error ?? ''}`;
       }
       setMode(RecordingState.IDLE);
       loadRecordings();
