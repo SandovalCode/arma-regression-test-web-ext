@@ -45,7 +45,8 @@ function getStepDetail(step) {
     case 'click':
     case 'doubleClick':
     case 'hover':       return sel;
-    case 'change':      return `${sel}${step.label !== undefined ? ` → "${step.label}"` : step.value ? ` → "${step.value}"` : ''}`;
+    case 'selectOption': return `${sel} → "${step.label ?? step.value}"`;
+    case 'change':      return `${sel}${step.value ? ` → "${step.value}"` : ''}`;
     case 'waitForElement': return sel;
     default:            return sel;
   }
@@ -423,8 +424,8 @@ async function runRecording(recording, tabId) {
       });
 
       try {
-        // Auto: waitForElement before clicks and change steps so the element is ready
-        if ((step.type === 'click' || step.type === 'doubleClick' || step.type === 'change') && step.selectors?.length) {
+        // Auto: waitForElement before clicks, change, and selectOption steps
+        if ((step.type === 'click' || step.type === 'doubleClick' || step.type === 'change' || step.type === 'selectOption') && step.selectors?.length) {
           console.log(`[Replay] step ${i + 1} auto → waitForElement`, JSON.stringify(step.selectors));
           await executeStep(
             { type: 'waitForElement', selectors: step.selectors, target: step.target },
@@ -435,8 +436,8 @@ async function runRecording(recording, tabId) {
         console.log(`[Replay] step ${i + 1}:`, JSON.stringify(step, null, 2));
         await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
 
-        // Auto: waitForPageLoad after navigate or select change (which may trigger navigation)
-        if ((step.type === 'navigate' || (step.type === 'change' && step.label !== undefined)) && !replayState.aborted) {
+        // Auto: waitForPageLoad after navigate or selectOption (which may trigger navigation)
+        if ((step.type === 'navigate' || step.type === 'selectOption') && !replayState.aborted) {
           console.log(`[Replay] step ${i + 1} auto → waitForPageLoad`);
           await executeStep(
             { type: 'waitForPageLoad' },

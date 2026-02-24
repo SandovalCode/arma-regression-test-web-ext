@@ -22,6 +22,7 @@ export async function executeStep(step, tabId, frameContextMap, clipboardVars, c
     case 'doubleClick':    return execDoubleClick(step, tabId, contextId, cdp);
     case 'hover':          return execHover(step, tabId, contextId, cdp);
     case 'change':         return execChange(step, tabId, contextId, cdp);
+    case 'selectOption':   return execSelectOption(step, tabId, contextId, cdp);
     case 'keyDown':        return execKeyDown(step, tabId, cdp);
     case 'keyUp':          return execKeyUp(step, tabId, cdp);
     case 'waitForElement':  return execWaitForElement(step, tabId, contextId, cdp);
@@ -229,6 +230,22 @@ async function execChange(step, tabId, contextId, cdp) {
 
     await tryClickAutocompleteOption(value, tabId, contextId, cdp);
   }
+}
+
+// ── selectOption ───────────────────────────────────────────────────────────────
+
+async function execSelectOption(step, tabId, contextId, cdp) {
+  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  if (!objectId) throw new Error(`selectOption: could not find select. Tried: ${JSON.stringify(step.selectors)}`);
+
+  await cdp(tabId, 'Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: `function() {
+      this.value = ${JSON.stringify(step.value)};
+      this.dispatchEvent(new Event('change', { bubbles: false, cancelable: true }));
+    }`,
+    returnByValue: true,
+  });
 }
 
 // ── Autocomplete option picker ──────────────────────────────────────────────────

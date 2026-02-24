@@ -222,6 +222,7 @@ const STEP_ICONS = {
   click:          '🖱️',
   doubleClick:    '🖱️',
   hover:          '👆',
+  selectOption:   '🔽',
   change:         '⌨️',
   navigate:       '🔗',
   keyDown:        '⌨️',
@@ -249,10 +250,10 @@ function stepLabel(step) {
       return { main: step.type === 'doubleClick' ? 'Double click' : 'Click', sub: selectorHint };
     case 'hover':
       return { main: 'Hover', sub: selectorHint };
+    case 'selectOption':
+      return { main: 'Select', sub: `"${String(step.label ?? step.value ?? '').slice(0, 30)}"` };
     case 'change':
-      return step.label !== undefined
-        ? { main: 'Select', sub: `"${String(step.label).slice(0, 30)}"` }
-        : { main: 'Type',   sub: `"${String(step.value ?? '').slice(0, 30)}"` };
+      return { main: 'Type', sub: `"${String(step.value ?? '').slice(0, 30)}"` };
     case 'navigate':
       return { main: 'Navigate', sub: (step.url ?? '').replace(/^https?:\/\//, '').slice(0, 40) };
     case 'keyDown':

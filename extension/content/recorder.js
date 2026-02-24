@@ -185,6 +185,8 @@
   function handleClick(e) {
     const el = e.target;
     if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
+    // Clicks on <select> and <option> are captured as selectOption steps via change event
+    if (el.tagName === 'SELECT' || el.tagName === 'OPTION' || el.closest('select')) return;
 
     const rect = el.getBoundingClientRect();
     const offsetX = Math.round(e.clientX - rect.left);
@@ -252,21 +254,29 @@
     const el = e.target;
     if (!el) return;
 
-    // If we had a pending input change, use the latest value
+    if (el.tagName === 'SELECT') {
+      // Record as a dedicated selectOption step with full option details
+      const selectedOption = el.options[el.selectedIndex];
+      sendStep({
+        type: 'selectOption',
+        target: 'main',
+        selectors: generateSelectors(el),
+        value:        el.value,                          // option value attr (used to set select.value)
+        label:        selectedOption?.text?.trim() ?? el.value, // visible text (shown in UI)
+        optionIndex:  el.selectedIndex,                  // fallback if value changes
+        ...frameInfo,
+      });
+      return;
+    }
+
+    // Plain text input
     const value = pendingInputChange?.el === el ? el.value : (el.value ?? '');
     pendingInputChange = null;
-
-    // For <select>, capture the visible option text so the recording is readable
-    const label = el.tagName === 'SELECT'
-      ? (el.options[el.selectedIndex]?.text?.trim() ?? value)
-      : undefined;
-
     sendStep({
       type: 'change',
       target: 'main',
       selectors: generateSelectors(el),
       value,
-      ...(label !== undefined ? { label } : {}),
       ...frameInfo,
     });
   }
