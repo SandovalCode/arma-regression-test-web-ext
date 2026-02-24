@@ -566,4 +566,4 @@ input[type="text"]::placeholder { color: var(--muted); }
   padding: 20px;
 }
 .dialog h3 { font-size: 14px; margin-bottom: 12px; }
-.dialog-actions { display: flex; gap: 8px; }
+.dialog-actions { display: flex; gap: 8px; margin-top: 10px; }
