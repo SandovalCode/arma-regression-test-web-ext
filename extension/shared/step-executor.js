@@ -1,5 +1,5 @@
 import { resolveSelector, waitForSelector } from './selector-resolver.js';
-import { NAV_TIMEOUT_MS, STEP_TIMEOUT_MS } from './constants.js';
+import { NAV_TIMEOUT_MS, STEP_TIMEOUT_MS, POLLING_DOMAINS } from './constants.js';
 
 /**
  * Execute a single recording step using the Chrome DevTools Protocol.
@@ -349,11 +349,18 @@ async function execWaitForElement(step, tabId, contextId, cdp) {
 }
 
 async function execWaitForPageLoad(tabId, cdp) {
-  // Some SPAs (e.g. Salesforce Lightning) continuously poll the network and
-  // never reach 'complete'. Strategy:
-  //   • 'complete'     → done immediately (normal pages)
-  //   • 'interactive'  → DOM is ready; wait an extra 2s for JS to render, then proceed
-  //   • still loading after NAV_TIMEOUT_MS → give up and continue anyway
+  // For domains that poll continuously (e.g. Salesforce Lightning), readyState
+  // never reaches 'complete'. Detect these by hostname and use a fixed sleep.
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const hostname = new URL(tab.url ?? '').hostname;
+    if (POLLING_DOMAINS.some(d => hostname.endsWith(d))) {
+      await sleep(3000);
+      return;
+    }
+  } catch (_) {}
+
+  // Normal pages: wait for 'complete', fall back to 'interactive' + 2s settle.
   const INTERACTIVE_SETTLE_MS = 2000;
   const deadline = Date.now() + NAV_TIMEOUT_MS;
 

@@ -206,6 +206,14 @@
     _pendingClickStep = step;
     _clickTimer = setTimeout(() => {
       if (_pendingClickStep) {
+        // Auto-record a waitForElement before every click so replay waits for
+        // the element to be present without requiring manual right-click setup.
+        sendStep({
+          type: 'waitForElement',
+          target: _pendingClickStep.target,
+          selectors: _pendingClickStep.selectors,
+          ...(_pendingClickStep.frame ? { frame: _pendingClickStep.frame } : {}),
+        });
         sendStep(_pendingClickStep);
         _pendingClickStep = null;
       }
@@ -224,6 +232,12 @@
     const offsetX = Math.round(e.clientX - rect.left);
     const offsetY = Math.round(e.clientY - rect.top);
 
+    sendStep({
+      type: 'waitForElement',
+      target: 'main',
+      selectors: generateSelectors(el),
+      ...frameInfo,
+    });
     sendStep({
       type: 'doubleClick',
       target: 'main',

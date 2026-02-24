@@ -53,3 +53,10 @@ export const POLL_INTERVAL_MS  = 500;     // waitForElement polling interval
 export const KEEPALIVE_MINS    = 0.4;     // alarm period to keep SW alive (~24s)
 
 export const MAX_HISTORY_ENTRIES = 100;
+
+// Hostnames (suffix match) that continuously poll the network and never reach
+// readyState='complete'. For these, waitForPageLoad skips polling and uses a
+// fixed sleep instead. Add new entries here as needed.
+export const POLLING_DOMAINS = [
+  'force.com',  // Salesforce Lightning: *.lightning.force.com, *.sandbox.lightning.force.com, etc.
+];
