@@ -62,10 +62,90 @@ chrome.debugger.onEvent.addListener((_source, method, params) => {
   }
 });
 
-chrome.debugger.onDetach.addListener((source, _reason) => {
-  if (source.tabId === replayState.tabId) {
+chrome.debugger.onDetach.addListener((source, reason) => {
+  if (source.tabId !== replayState.tabId || !replayState.active) return;
+
+  console.warn(`[Replay] Debugger detached — reason: "${reason}"`);
+
+  if (reason === 'canceled_by_user') {
     replayState.aborted = true;
+    return;
   }
+
+  // Prevent a second detach event from overwriting a re-attach that's already in progress.
+  if (replayState.reattachPromise) return;
+
+  // For navigation-induced detachments (e.g. "target_closed" on cross-origin navigation,
+  // or when Salesforce SSO redirects through a chrome-extension:// page of their own extension).
+  //
+  // Problem with polling: `chrome.tabs.get(tabId).url` returns the last committed https URL
+  // even while the tab is actively rendering a chrome-extension:// SSO page, so the URL
+  // check passes but `chrome.debugger.attach` still fails. The SSO can take 15+ seconds.
+  //
+  // Solution: event-driven via `chrome.tabs.onUpdated`. We retry the attach on every tab
+  // update. When the SSO completes and the tab commits back to the Salesforce https URL,
+  // attach finally succeeds. No fixed retry limit — only a 45s hard timeout.
+  replayState.reattachPromise = (async () => {
+    const tabId = source.tabId;
+    let attaching = false;
+
+    try {
+      await new Promise((resolve) => {
+        const giveUpTimer = setTimeout(() => {
+          chrome.tabs.onUpdated.removeListener(onUpdated);
+          console.warn('[Replay] Re-attach timed out (45s) — aborting');
+          replayState.aborted = true;
+          resolve();
+        }, 45_000);
+
+        async function tryAttach() {
+          if (attaching || replayState.aborted) return;
+          attaching = true;
+          try {
+            const tab = await chrome.tabs.get(tabId).catch(() => null);
+            const url = tab?.url ?? '';
+            if (!url.startsWith('https://') && !url.startsWith('http://')) {
+              attaching = false;
+              return; // tab is still on an internal/extension URL — wait for next update
+            }
+            await chrome.debugger.attach({ tabId }, '1.3');
+            await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
+            await chrome.debugger.sendCommand({ tabId }, 'Page.enable');
+            frameContextMap.clear();
+            console.log('[Replay] Debugger re-attached successfully');
+            clearTimeout(giveUpTimer);
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            resolve();
+          } catch (err) {
+            attaching = false;
+            if (err.message?.includes('already attached')) {
+              console.log('[Replay] Debugger already re-attached by Chrome');
+              frameContextMap.clear();
+              clearTimeout(giveUpTimer);
+              chrome.tabs.onUpdated.removeListener(onUpdated);
+              resolve();
+              return;
+            }
+            // Attach failed (tab may be mid-SSO or renderer not ready yet).
+            // Don't abort — wait for the next onUpdated event to try again.
+            console.log(`[Replay] Re-attach attempt failed: ${err.message} — waiting for tab update…`);
+          }
+        }
+
+        function onUpdated(changedTabId) {
+          if (changedTabId !== tabId) return;
+          // Small delay for the renderer to initialize before we try to attach.
+          setTimeout(tryAttach, 300);
+        }
+
+        chrome.tabs.onUpdated.addListener(onUpdated);
+        // Also kick off an immediate attempt — tab may already be ready.
+        setTimeout(tryAttach, 500);
+      });
+    } finally {
+      replayState.reattachPromise = null;
+    }
+  })();
 });
 
 // ── Service worker keep-alive ──────────────────────────────────────────────────
@@ -388,7 +468,7 @@ async function forceReset() {
   if (replayState.active && replayState.tabId) {
     try { await chrome.debugger.detach({ tabId: replayState.tabId }); } catch (_) {}
   }
-  replayState = { active: false, aborted: false, tabId: null };
+  replayState = { active: false, aborted: false, tabId: null, reattachPromise: null };
 
   // 3. Stop keepalive alarm
   stopKeepalive();
@@ -401,7 +481,7 @@ async function forceReset() {
 async function runRecording(recording, tabId) {
   if (replayState.active) return; // prevent concurrent runs
 
-  replayState = { active: true, aborted: false, tabId };
+  replayState = { active: true, aborted: false, tabId, reattachPromise: null };
   clipboardVars = new Map();
   variables = new Map();
   frameContextMap = new Map();
@@ -428,6 +508,12 @@ async function runRecording(recording, tabId) {
     await cdp(tabId, 'Page.enable');
 
     for (let i = 0; i < recording.steps.length; i++) {
+      // If the debugger was detached by a cross-origin navigation, wait for
+      // re-attachment to complete before running the next step.
+      if (replayState.reattachPromise) {
+        console.log(`[Replay] step ${i + 1} waiting for debugger re-attachment...`);
+        await replayState.reattachPromise;
+      }
       if (replayState.aborted) break;
 
       const step = recording.steps[i];
@@ -445,23 +531,47 @@ async function runRecording(recording, tabId) {
       try {
         // Auto: waitForElement before clicks, change, and selectOption steps
         if ((step.type === 'click' || step.type === 'doubleClick' || step.type === 'change' || step.type === 'selectOption') && step.selectors?.length) {
-          console.log(`[Replay] step ${i + 1} auto → waitForElement`, JSON.stringify(step.selectors));
-          await executeStep(
-            { type: 'waitForElement', selectors: step.selectors, target: step.target },
-            tabId, frameContextMap, clipboardVars, cdp, variables
-          ).catch(err => console.warn(`[Replay] step ${i + 1} waitForElement failed (proceeding):`, err.message));
+          // Ensure any in-progress re-attachment is done before issuing CDP calls.
+          if (replayState.reattachPromise) await replayState.reattachPromise;
+          if (!replayState.aborted) {
+            console.log(`[Replay] step ${i + 1} auto → waitForElement`, JSON.stringify(step.selectors));
+            await executeStep(
+              { type: 'waitForElement', selectors: step.selectors, target: step.target },
+              tabId, frameContextMap, clipboardVars, cdp, variables
+            ).catch(err => console.warn(`[Replay] step ${i + 1} waitForElement failed (proceeding):`, err.message));
+          }
+          // The debugger may have detached DURING the waitForElement (e.g. Salesforce SSO).
+          // waitForSelector now fails fast on CDP errors, so this re-attach wait is short.
+          // After re-attachment, re-run waitForElement so the element actually settles
+          // on the freshly-loaded page before the click fires.
+          if (replayState.reattachPromise) {
+            console.log(`[Replay] step ${i + 1} waiting for re-attachment after waitForElement detach…`);
+            await replayState.reattachPromise;
+            if (replayState.aborted) break;
+            console.log(`[Replay] step ${i + 1} re-running waitForElement after re-attach`);
+            await executeStep(
+              { type: 'waitForElement', selectors: step.selectors, target: step.target },
+              tabId, frameContextMap, clipboardVars, cdp, variables
+            ).catch(err => console.warn(`[Replay] step ${i + 1} waitForElement (post-reattach) failed (proceeding):`, err.message));
+          }
         }
 
+        if (replayState.aborted) break;
         console.log(`[Replay] step ${i + 1}:`, JSON.stringify(step, null, 2));
         await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
 
         // Auto: waitForPageLoad after navigate or selectOption (which may trigger navigation)
         if ((step.type === 'navigate' || step.type === 'selectOption') && !replayState.aborted) {
-          console.log(`[Replay] step ${i + 1} auto → waitForPageLoad`);
-          await executeStep(
-            { type: 'waitForPageLoad' },
-            tabId, frameContextMap, clipboardVars, cdp, variables
-          ).catch(err => console.warn(`[Replay] step ${i + 1} waitForPageLoad failed (proceeding):`, err.message));
+          // Wait for any in-progress re-attachment (e.g. Salesforce SSO fires target_closed
+          // asynchronously during or just after the navigate step) before issuing CDP calls.
+          if (replayState.reattachPromise) await replayState.reattachPromise;
+          if (!replayState.aborted) {
+            console.log(`[Replay] step ${i + 1} auto → waitForPageLoad`);
+            await executeStep(
+              { type: 'waitForPageLoad' },
+              tabId, frameContextMap, clipboardVars, cdp, variables
+            ).catch(err => console.warn(`[Replay] step ${i + 1} waitForPageLoad failed (proceeding):`, err.message));
+          }
         }
 
         await new Promise(r => setTimeout(r, 50)); // 50 ms gap between actions

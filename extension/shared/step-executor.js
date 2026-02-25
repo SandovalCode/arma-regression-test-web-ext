@@ -137,19 +137,69 @@ function waitForNavigation(tabId, timeoutMs) {
 // ── click ──────────────────────────────────────────────────────────────────────
 
 async function execClick(step, tabId, contextId, cdp) {
-  const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
-  const cx = x + (step.offsetX ?? 0);
-  const cy = y + (step.offsetY ?? 0);
+  // Resolve objectId first so we can scroll into view before clicking (Playwright approach).
+  // Input.dispatchMouseEvent expects viewport-relative coordinates. Scrolling the element
+  // into view guarantees getBoundingClientRect() returns usable viewport coords.
+  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+
+  let cx, cy;
+  if (objectId) {
+    const box = await scrollIntoViewAndGetRect(objectId, tabId, cdp);
+    if (box) {
+      cx = box.x + (step.offsetX ?? 0);
+      cy = box.y + (step.offsetY ?? 0);
+    }
+  }
+  if (cx == null) {
+    // Fall back to resolveSelector if objectId resolution failed
+    const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
+    cx = x + (step.offsetX ?? 0);
+    cy = y + (step.offsetY ?? 0);
+  }
 
   const hasNav = step.assertedEvents?.some(e => e.type === 'navigation');
   const navPromise = hasNav ? waitForNavigation(tabId, NAV_TIMEOUT_MS) : null;
 
-  await dispatchMouse(tabId, 'mouseMoved',   cx, cy, 'none', 0, cdp);
-  await dispatchMouse(tabId, 'mousePressed', cx, cy, 'left', 1, cdp);
+  // mouseMoved triggers mouseenter on the element and all its ancestors (CDP real event).
+  await dispatchMouse(tabId, 'mouseMoved', cx, cy, 'none', 0, cdp);
 
+  // Wait for mouseenter handlers to finish before clicking.
+  // Frameworks like Salesforce Aura/LWC activate/show controls in response to
+  // mouseenter, and the click must arrive after that handler completes.
+  await sleep(80);
+
+  // Explicitly focus the element before pressing — mirrors what a real click does:
+  // blur fires on the previously focused element, focus fires on this one.
+  if (objectId) {
+    await cdp(tabId, 'Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: 'function() { this.focus(); }',
+      returnByValue: true,
+    }).catch(() => {});
+  }
+
+  await dispatchMouse(tabId, 'mousePressed',  cx, cy, 'left', 1, cdp);
   if (step.duration) await sleep(step.duration);
-
   await dispatchMouse(tabId, 'mouseReleased', cx, cy, 'left', 1, cdp);
+
+  // Belt-and-suspenders: also fire synthetic JS events on the element.
+  // Salesforce LWC (and some other frameworks) register addEventListener handlers
+  // that respond to JS-dispatched events independently of the CDP hardware events.
+  if (objectId) {
+    await cdp(tabId, 'Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: `function() {
+        const cx = ${cx}, cy = ${cy};
+        ['mousedown', 'mouseup', 'click'].forEach(type => {
+          this.dispatchEvent(new MouseEvent(type, {
+            view: window, bubbles: true, cancelable: true,
+            clientX: cx, clientY: cy,
+          }));
+        });
+      }`,
+      returnByValue: true,
+    }).catch(() => {});
+  }
 
   if (navPromise) {
     await navPromise;
@@ -160,9 +210,20 @@ async function execClick(step, tabId, contextId, cdp) {
 // ── doubleClick ────────────────────────────────────────────────────────────────
 
 async function execDoubleClick(step, tabId, contextId, cdp) {
-  const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
-  const cx = x + (step.offsetX ?? 0);
-  const cy = y + (step.offsetY ?? 0);
+  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  let cx, cy;
+  if (objectId) {
+    const box = await scrollIntoViewAndGetRect(objectId, tabId, cdp);
+    if (box) {
+      cx = box.x + (step.offsetX ?? 0);
+      cy = box.y + (step.offsetY ?? 0);
+    }
+  }
+  if (cx == null) {
+    const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
+    cx = x + (step.offsetX ?? 0);
+    cy = y + (step.offsetY ?? 0);
+  }
 
   await dispatchMouse(tabId, 'mouseMoved',   cx, cy, 'none', 0, cdp);
   await dispatchMouse(tabId, 'mousePressed', cx, cy, 'left', 1, cdp);
@@ -174,9 +235,20 @@ async function execDoubleClick(step, tabId, contextId, cdp) {
 // ── hover ──────────────────────────────────────────────────────────────────────
 
 async function execHover(step, tabId, contextId, cdp) {
-  const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
-  const cx = x + (step.offsetX ?? 0);
-  const cy = y + (step.offsetY ?? 0);
+  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  let cx, cy;
+  if (objectId) {
+    const box = await scrollIntoViewAndGetRect(objectId, tabId, cdp);
+    if (box) {
+      cx = box.x + (step.offsetX ?? 0);
+      cy = box.y + (step.offsetY ?? 0);
+    }
+  }
+  if (cx == null) {
+    const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
+    cx = x + (step.offsetX ?? 0);
+    cy = y + (step.offsetY ?? 0);
+  }
   await dispatchMouse(tabId, 'mouseMoved', cx, cy, 'none', 0, cdp);
 }
 
@@ -529,7 +601,7 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
 
   for (const candidate of normalized) {
     const sel = candidate[0];
-    if (!sel) continue;
+    if (!sel || typeof sel !== 'string') continue;
 
     try {
       let expression;
@@ -556,6 +628,21 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
             return null;
           })(document, ${JSON.stringify(css)})
         `;
+      } else if (sel.includes(' >>> ')) {
+        const parts = sel.split(' >>> ').map(s => s.trim()).filter(Boolean);
+        expression = `
+          (function() {
+            const parts = ${JSON.stringify(parts)};
+            let root = document;
+            for (let i = 0; i < parts.length; i++) {
+              const el = root.querySelector(parts[i]);
+              if (!el) return null;
+              if (i < parts.length - 1) { root = el.shadowRoot; if (!root) return null; }
+              else return el;
+            }
+            return null;
+          })()
+        `;
       } else if (sel.startsWith('text/')) {
         const text = sel.slice(5);
         expression = `
@@ -563,7 +650,11 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
           .find(e => e.offsetParent !== null && e.textContent.trim() === ${JSON.stringify(text)})
         `;
       } else {
-        expression = `document.querySelector(${JSON.stringify(sel)})`;
+        // Use getElementById for #id selectors — LWC (Salesforce) patches document.querySelector
+        // to enforce shadow encapsulation but does NOT patch getElementById.
+        expression = sel.startsWith('#')
+          ? `document.getElementById(${JSON.stringify(sel.slice(1))})`
+          : `document.querySelector(${JSON.stringify(sel)})`;
       }
 
       const params = { expression, returnByValue: false };
@@ -574,6 +665,22 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
       if (objectId) return objectId;
     } catch (_) {}
   }
+
+  // Fallback: native CDP DOM.querySelector — bypasses JS-patched querySelector (e.g. LWC synthetic shadow)
+  for (const candidate of normalized) {
+    const sel = candidate[0];
+    if (!sel || typeof sel !== 'string' || sel.includes('/') || sel.includes(' >>> ')) continue;
+    try {
+      const { root } = await cdp(tabId, 'DOM.getDocument', { depth: 1 });
+      const res = await cdp(tabId, 'DOM.querySelector', { nodeId: root.nodeId, selector: sel });
+      const nodeId = res?.nodeId;
+      if (!nodeId) continue;
+      const resolved = await cdp(tabId, 'DOM.resolveNode', { nodeId });
+      const objectId = resolved?.object?.objectId;
+      if (objectId) return objectId;
+    } catch (_) {}
+  }
+
   return null;
 }
 
@@ -586,6 +693,27 @@ async function dispatchMouse(tabId, type, x, y, button, clickCount, cdp, extra =
     clickCount,
     ...extra,
   });
+}
+
+/**
+ * Scrolls the element into the viewport, then returns its fresh bounding rect.
+ * Mirrors Playwright's approach: scroll first, then read viewport-relative coords
+ * for Input.dispatchMouseEvent (which expects viewport coords, not page-absolute).
+ */
+async function scrollIntoViewAndGetRect(objectId, tabId, cdp) {
+  await cdp(tabId, 'Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: 'function() { this.scrollIntoView({ behavior: "instant", block: "center", inline: "center" }); }',
+    returnByValue: true,
+  }).catch(() => {});
+  // Brief settle after scroll so the viewport position stabilises
+  await sleep(100);
+  const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: 'function() { const r = this.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }',
+    returnByValue: true,
+  }).catch(() => null);
+  return res?.result?.value ?? null;
 }
 
 function sleep(ms) {
