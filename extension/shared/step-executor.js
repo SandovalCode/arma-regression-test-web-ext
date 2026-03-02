@@ -28,10 +28,10 @@ export async function executeStep(step, tabId, frameContextMap, clipboardVars, c
     case 'waitForElement':  return execWaitForElement(step, tabId, contextId, cdp);
     case 'waitForPageLoad': return execWaitForPageLoad(tabId, cdp);
     case 'scroll':         return execScroll(step, tabId, contextId, cdp);
-    case 'copy':           return execCopy(step, tabId, contextId, clipboardVars, cdp);
-    case 'paste':          return execPaste(step, tabId, contextId, clipboardVars, cdp);
-    case 'saveVariable':   return execSaveVariable(step, tabId, contextId, cdp, variables);
-    case 'pasteVariable':  return execPasteVariable(step, tabId, contextId, cdp, variables);
+    case 'copy':           return execCopyVariableAtRecording(step, tabId, contextId, clipboardVars, cdp);
+    case 'paste':          return execPasteVariableAtRecording(step, tabId, contextId, clipboardVars, cdp);
+    case 'saveVariable':   return execCopyVariableAtReplaying(step, tabId, contextId, cdp, variables);
+    case 'pasteVariable':  return execPasteVariableAtReplaying(step, tabId, contextId, cdp, variables);
     case 'wait':           return sleep(Math.max(0, step.duration ?? 0));
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
@@ -474,35 +474,38 @@ async function execScroll(step, tabId, contextId, cdp) {
 
 // ── copy ───────────────────────────────────────────────────────────────────────
 
-async function execCopy(step, tabId, contextId, clipboardVars, cdp) {
-  // Capture the currently selected text or focused input's value at runtime
-  const res = await cdp(tabId, 'Runtime.evaluate', {
-    expression: `
-      (function() {
-        const sel = window.getSelection()?.toString();
-        if (sel) return sel;
-        const el = document.activeElement;
-        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-          const sub = el.value.slice(el.selectionStart, el.selectionEnd);
-          return sub || el.value;
-        }
-        return '';
-      })()
-    `,
-    returnByValue: true,
-    ...(contextId ? { contextId } : {}),
-  });
+async function execCopyVariableAtRecording(step, tabId, contextId, clipboardVars, cdp) {
+  // Read directly from the recorded element — window.getSelection() is unreliable
+  // at replay time (no human interaction) and can pick up stray selected text left
+  // by previous CDP clicks (e.g. "Basic Search" link text).
+  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  console.log(`[Copy] var="${step.variableName}" objectId=${objectId ? 'found' : 'NOT FOUND'} selectors=`, JSON.stringify(step.selectors));
+  if (!objectId) throw new Error(`copy: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`);
 
-  const captured = res?.result?.value ?? step.snapshotValue ?? '';
+  const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: `function() {
+      if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
+        return this.value;
+      }
+      return this.textContent?.trim() ?? '';
+    }`,
+    returnByValue: true,
+  }).catch(() => null);
+
+  const captured = res?.result?.value ?? '';
+  console.log(`[Copy] var="${step.variableName}" captured="${captured}"`);
+  if (!captured) throw new Error(`copy: element found but value is empty for variable "${step.variableName}"`);
+
   clipboardVars.set(step.variableName, captured);
 }
 
 // ── paste ──────────────────────────────────────────────────────────────────────
 
-async function execPaste(step, tabId, contextId, clipboardVars, cdp) {
-  // Retrieve value from the in-memory clipboard variable
-  const textToPaste = clipboardVars.get(step.variableName) ?? step.snapshotValue ?? '';
-  if (!textToPaste) return; // nothing to paste
+async function execPasteVariableAtRecording(step, tabId, contextId, clipboardVars, cdp) {
+  const textToPaste = clipboardVars.get(step.variableName);
+  console.log(`[Paste] var="${step.variableName}" value="${textToPaste}"`);
+  if (!textToPaste) throw new Error(`paste: no runtime value found for variable "${step.variableName}" — make sure a copy step ran before this`);
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
@@ -531,40 +534,32 @@ async function execPaste(step, tabId, contextId, clipboardVars, cdp) {
 
 // ── saveVariable ───────────────────────────────────────────────────────────────
 
-async function execSaveVariable(step, tabId, contextId, cdp, variables) {
-  let value = step.defaultValue ?? '';
+async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variables) {
+  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  if (!objectId) throw new Error(`saveVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`);
 
-  // Try to read the element's live value; fall back to defaultValue if unavailable.
-  try {
-    const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-    if (objectId) {
-      const res = await cdp(tabId, 'Runtime.callFunctionOn', {
-        objectId,
-        functionDeclaration: `function() {
-          if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
-            return this.value;
-          }
-          return this.textContent?.trim() ?? '';
-        }`,
-        returnByValue: true,
-      });
-      const current = res?.result?.value;
-      if (current != null && current !== '') value = current;
-    }
-  } catch (_) {
-    // Fall back to defaultValue captured at recording time
-  }
+  const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: `function() {
+      if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
+        return this.value;
+      }
+      return this.textContent?.trim() ?? '';
+    }`,
+    returnByValue: true,
+  });
+
+  const value = res?.result?.value;
+  if (!value) throw new Error(`saveVariable: element found but value is empty for variable "${step.variableName}"`);
 
   variables.set(step.variableName, value);
 }
 
 // ── pasteVariable ──────────────────────────────────────────────────────────────
 
-async function execPasteVariable(step, tabId, contextId, cdp, variables) {
-  // Prefer the live runtime value captured by saveVariable; fall back to the
-  // defaultValue embedded in the step at recording time.
-  const textToPaste = variables.get(step.variableName) ?? step.fallbackValue ?? '';
-  if (!textToPaste) return; // nothing to paste
+async function execPasteVariableAtReplaying(step, tabId, contextId, cdp, variables) {
+  const textToPaste = variables.get(step.variableName);
+  if (!textToPaste) throw new Error(`pasteVariable: no runtime value found for variable "${step.variableName}" — make sure a saveVariable step ran before this`);
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
