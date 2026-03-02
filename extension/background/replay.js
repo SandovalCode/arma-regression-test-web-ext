@@ -86,7 +86,28 @@ export async function runRecording(recording, tabId) {
 
         if (replayState.aborted) break;
         console.log(`[Replay] step ${i + 1}:`, JSON.stringify(step, null, 2));
-        await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
+
+        if (step.type === 'wait') {
+          // Countdown display: broadcast a tick every second instead of a plain sleep
+          const totalMs = Math.max(0, step.duration ?? 0);
+          let elapsed = 0;
+          while (elapsed < totalMs && !replayState.aborted) {
+            const remaining = Math.ceil((totalMs - elapsed) / 1000);
+            broadcast(MSG.STEP_PROGRESS, {
+              stepIndex: i,
+              total: recording.steps.length,
+              status: 'running',
+              stepType: step.type,
+              stepDetail,
+              countdown: remaining,
+            });
+            const tick = Math.min(1000, totalMs - elapsed);
+            await new Promise(r => setTimeout(r, tick));
+            elapsed += tick;
+          }
+        } else {
+          await executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables);
+        }
 
         // Auto: waitForPageLoad after navigate or selectOption (which may trigger navigation)
         if ((step.type === 'navigate' || step.type === 'selectOption') && !replayState.aborted) {

@@ -154,7 +154,7 @@ function escapeHtml(str) {
 }
 
 // ── Render step progress ───────────────────────────────────────────────────────
-function addOrUpdateStep({ stepIndex, total, status, stepType, stepDetail, durationMs, error }) {
+function addOrUpdateStep({ stepIndex, total, status, stepType, stepDetail, durationMs, error, countdown }) {
   // update progress bar
   const pct = total > 0 ? Math.round(((stepIndex + 1) / total) * 100) : 0;
   progressBar.style.width = `${pct}%`;
@@ -170,7 +170,7 @@ function addOrUpdateStep({ stepIndex, total, status, stepType, stepDetail, durat
   }
 
   const icons = { pending: '⏳', running: '🔄', passed: '✅', failed: '❌' };
-  const dur = durationMs ? `${durationMs}ms` : '';
+  const dur = countdown != null ? `${countdown}s` : (durationMs ? `${durationMs}ms` : '');
 
   li.className = `step-item ${status}`;
   li.innerHTML = `

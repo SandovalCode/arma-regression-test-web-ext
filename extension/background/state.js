@@ -17,6 +17,10 @@ export const clipboardVars = new Map();
 // User-defined variables saved during a run via the "Save variable" step
 export const variables = new Map();
 
+// Variable snapshots captured during recording (variableName → snapshotValue).
+// Used to replace literal values in recorded steps with {{varName}} references.
+export const recordingVarSnapshots = new Map();
+
 // Execution context map: frameId → executionContextId (populated via Runtime events)
 export const frameContextMap = new Map();
 

@@ -1,6 +1,6 @@
 import { MSG } from '../shared/constants.js';
 import { saveRecording } from '../shared/storage.js';
-import { recordingState, replayState } from './state.js';
+import { recordingState, replayState, recordingVarSnapshots } from './state.js';
 import { broadcast } from './utils.js';
 import { startKeepalive, stopKeepalive } from './keepalive.js';
 
@@ -27,6 +27,7 @@ export async function startRecording(tabId) {
     assertedEvents: [{ type: 'navigation', url: startUrl, title: '' }],
   };
 
+  recordingVarSnapshots.clear();
   Object.assign(recordingState, { active: true, tabId, steps: [firstStep] });
   startKeepalive();
   broadcast(MSG.RECORD_STEP, { step: firstStep });
@@ -115,6 +116,7 @@ export async function forceReset() {
       });
     } catch (_) {}
   }
+  recordingVarSnapshots.clear();
   Object.assign(recordingState, { active: false, tabId: null, steps: [] });
 
   // 2. Tear down any active replay

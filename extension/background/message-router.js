@@ -1,9 +1,31 @@
 import { MSG } from '../shared/constants.js';
 import { getRecordings, getRunHistory, deleteRecording, saveRecording } from '../shared/storage.js';
-import { recordingState, replayState, contextMenu } from './state.js';
+import { recordingState, replayState, contextMenu, recordingVarSnapshots } from './state.js';
 import { broadcast } from './utils.js';
 import { startRecording, stopRecording, abortRecording, forceReset } from './recording.js';
 import { runRecording, runAll } from './replay.js';
+
+// ── Variable substitution helpers (recording time) ─────────────────────────────
+
+// Removes text/ selectors whose content contains a known variable value.
+// These selectors embed a dynamic value (e.g. a job ID) that would break
+// replays when the value changes. Removing them lets the step fall back to
+// stable structural selectors (aria, CSS, xpath).
+function filterVarSelectorsOut(selectors, snapshots) {
+  if (!Array.isArray(selectors)) return selectors;
+  return selectors
+    .map(group =>
+      group.filter(sel => {
+        if (typeof sel !== 'string' || !sel.startsWith('text/')) return true;
+        const text = sel.slice(5);
+        for (const [, snapshot] of snapshots) {
+          if (snapshot && snapshot.length >= 4 && text.includes(snapshot)) return false;
+        }
+        return true;
+      })
+    )
+    .filter(group => group.length > 0); // drop groups that became empty
+}
 
 // ── Message routing ────────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -113,6 +135,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (recordingState.active && payload.step) {
           const step = payload.step;
 
+          // Track saveVariable snapshots so later steps can reference them as {{varName}}
+          if (step.type === 'saveVariable' && step.variableName && step.defaultValue) {
+            recordingVarSnapshots.set(step.variableName, step.defaultValue);
+          }
+
           // Auto-prepend a waitForElement for steps that target a specific element.
           if ((step.type === 'saveVariable' || step.type === 'pasteVariable') && step.selectors?.length) {
             const waitStep = {
@@ -179,8 +206,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
       case MSG.RECORD_STEP:
         if (recordingState.active && payload.step) {
-          recordingState.steps.push(payload.step);
-          console.log(`[Recorder] step ${recordingState.steps.length}:`, JSON.stringify(payload.step, null, 2));
+          const step = { ...payload.step };
+
+          // Track copy snapshots so later steps can reference them as {{varName}}
+          if (step.type === 'copy' && step.variableName && step.snapshotValue) {
+            recordingVarSnapshots.set(step.variableName, step.snapshotValue);
+          }
+
+          // Remove text/ selectors that contain a known variable value —
+          // they embed a hardcoded dynamic value that breaks replays when it changes.
+          if (step.selectors) {
+            step.selectors = filterVarSelectorsOut(step.selectors, recordingVarSnapshots);
+          }
+
+          recordingState.steps.push(step);
+          console.log(`[Recorder] step ${recordingState.steps.length}:`, JSON.stringify(step, null, 2));
           // No re-broadcast: sidepanel already receives this message directly from the content script.
           // (Hover steps created in the SW are broadcast separately via the context menu handler.)
         }
