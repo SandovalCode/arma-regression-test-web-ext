@@ -536,6 +536,7 @@ async function execPasteVariableAtRecording(step, tabId, contextId, clipboardVar
 
 async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variables) {
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  console.log(`[SaveVariable] var="${step.variableName}" objectId=${objectId ? 'found' : 'NOT FOUND'} selectors=`, JSON.stringify(step.selectors));
   if (!objectId) throw new Error(`saveVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`);
 
   const res = await cdp(tabId, 'Runtime.callFunctionOn', {
@@ -550,6 +551,7 @@ async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variable
   });
 
   const value = res?.result?.value;
+  console.log(`[SaveVariable] var="${step.variableName}" captured="${value}"`);
   if (!value) throw new Error(`saveVariable: element found but value is empty for variable "${step.variableName}"`);
 
   variables.set(step.variableName, value);
