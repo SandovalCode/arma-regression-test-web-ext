@@ -337,14 +337,11 @@ async function execChange(step, tabId, contextId, cdp) {
 //
 // Treat <select> as a plain HTML form field — no mouse simulation needed.
 //
-//  1. Short poll (3s) for cascading-AJAX selects: if a previous step's change
-//     event triggered an AJAX load, the options may already be arriving.
-//  2. Custom dropdown libraries (Select2, Chosen…) render their own DOM —
+//  1. Custom dropdown libraries (Select2, Chosen…) render their own DOM —
 //     click the visible option element directly.
-//  3. Native select: inject the option into the DOM if it is still missing,
-//     set select.value, fire change + blur. That is all a form cares about.
-//     No mouse events — they are not needed for form-field value assignment
-//     and can interfere with page navigation on some sites.
+//  2. Native select: inject the option if missing, set select.value, then
+//     register a capture-phase submit listener so the value survives any AJAX
+//     that might reset the select before form submission.
 
 async function execSelectOption(step, tabId, contextId, cdp) {
   // Build a selector list that puts "select[...]" CSS selectors FIRST.
@@ -358,17 +355,12 @@ async function execSelectOption(step, tabId, contextId, cdp) {
     ...normalized.filter(c => !(c[0] ?? '').startsWith('select')),
   ];
 
-  // 1. Give cascading-AJAX a short window to populate the select naturally.
-  await waitForOption(selectFirst, step.value, tabId, contextId, cdp, 3000);
-
-  // Re-resolve after the wait — AJAX may have replaced the DOM node.
   const objectId = await resolveObjectId(selectFirst, tabId, contextId, cdp);
   if (!objectId) throw new Error(`selectOption: could not find select. Tried: ${JSON.stringify(selectFirst)}`);
 
-  // Scroll into view so the element is reachable.
   await scrollIntoViewAndGetRect(objectId, tabId, cdp);
 
-  // 2. Custom dropdown: if a library rendered visible option elements, click one.
+  // 1. Custom dropdown: if a library rendered visible option elements, click one.
   const label = step.label ?? step.value;
   const optCoords = await findVisibleOptionCoords(label, step.value, tabId, contextId, cdp);
   if (optCoords) {
@@ -379,14 +371,13 @@ async function execSelectOption(step, tabId, contextId, cdp) {
     return;
   }
 
-  // 3. Native select — pure form-field approach.
+  // 2. Native select — pure form-field approach.
   //
   //    Problem: AJAX triggered by other steps can replace the options list at
   //    any time, resetting the select back to a default value (e.g. "10").
   //    Solution: set the value immediately AND register a capture-phase submit
   //    listener on the form that re-applies the value right before submission —
   //    no AJAX running after the button click can undo this.
-  console.log(`[selectOption] setting value="${step.value}" label="${label}" selector="${selectFirst?.[0]?.[0]}"`);
   const setRes = await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `function() {
@@ -396,16 +387,12 @@ async function execSelectOption(step, tabId, contextId, cdp) {
 
       function applyValue() {
         if (![...sel.options].some(o => o.value === v)) {
-          console.log('[selectOption] (re)injecting option value=' + v);
           sel.add(new Option(l, v, true, true));
         }
         sel.value = v;
-        console.log('[selectOption] applied value=' + sel.value + ' name=' + sel.name);
       }
 
-      const before = sel.value;
       applyValue();
-      const after = sel.value;
 
       // Register a capture-phase submit handler so the value is guaranteed
       // correct at the moment the browser serializes form data, even if AJAX
@@ -415,17 +402,15 @@ async function execSelectOption(step, tabId, contextId, cdp) {
       if (form && !form.__botSelectHandlers[sel.name]) {
         form.__botSelectHandlers[sel.name] = applyValue;
         form.addEventListener('submit', applyValue, true);
-        console.log('[selectOption] registered submit listener for name=' + sel.name);
       }
 
-      return { before, after, name: sel.name };
+      return sel.value;
     }`,
     returnByValue: true,
   });
   if (setRes?.exceptionDetails) {
-    console.warn(`[selectOption] JS exception in callFunctionOn:`, JSON.stringify(setRes.exceptionDetails));
+    console.warn(`[selectOption] exception:`, JSON.stringify(setRes.exceptionDetails));
   }
-  console.log(`[selectOption] result:`, JSON.stringify(setRes?.result?.value));
 }
 
 /**
@@ -896,13 +881,8 @@ async function waitForOption(selectors, targetValue, tabId, contextId, cdp, time
       // any objectId binding, so there are no stale-reference exceptions.
       const expr = `(function(){
         const el=${getEl};
-        if (!el) return { found: false, optCount: -1, sample: [] };
-        const opts = [...(el.options || [])];
-        return {
-          found: opts.some(o => o.value === ${targetStr}),
-          optCount: opts.length,
-          sample: opts.slice(0, 5).map(o => ({ v: o.value, t: o.text })),
-        };
+        if (!el) return false;
+        return [...(el.options || [])].some(o => o.value === ${targetStr});
       })()`;
       const params = { expression: expr, returnByValue: true };
       if (contextId) params.contextId = contextId;
@@ -911,32 +891,23 @@ async function waitForOption(selectors, targetValue, tabId, contextId, cdp, time
       if (res === null) {
         // CDP rejected — debugger likely detached
         if (++consecutiveErrors >= 6) throw new Error(`Debugger detached while waiting for <select> option "${targetValue}"`);
-        console.warn(`[waitForOption] CDP error consecutiveErrors=${consecutiveErrors}`);
       } else {
         consecutiveErrors = 0;
-        const val = res?.result?.value;
-        found = val?.found === true;
-        console.log(`[waitForOption] poll → found=${found} optCount=${val?.optCount} sample=${JSON.stringify(val?.sample)} target=${targetStr} exception=${!!res?.exceptionDetails}`);
+        found = res?.result?.value === true;
       }
     } else {
       // No plain CSS selector — fall back to resolveObjectId + callFunctionOn
       const freshId = await resolveObjectId(selectors, tabId, contextId, cdp);
       if (!freshId) {
         if (++consecutiveErrors >= 6) throw new Error(`Debugger detached while waiting for <select> option "${targetValue}"`);
-        console.warn(`[waitForOption] fallback: resolveObjectId failed consecutiveErrors=${consecutiveErrors}`);
       } else {
         consecutiveErrors = 0;
         const res = await cdp(tabId, 'Runtime.callFunctionOn', {
           objectId: freshId,
-          functionDeclaration: `function(){
-            const opts=[...(this.options||[])];
-            return{found:opts.some(o=>o.value===${targetStr}),optCount:opts.length,sample:opts.slice(0,5).map(o=>({v:o.value,t:o.text}))};
-          }`,
+          functionDeclaration: `function(){ return [...(this.options||[])].some(o=>o.value===${targetStr}); }`,
           returnByValue: true,
         }).catch(() => null);
-        const val = res?.result?.value;
-        found = val?.found === true;
-        console.log(`[waitForOption] fallback poll → found=${found} optCount=${val?.optCount} sample=${JSON.stringify(val?.sample)} target=${targetStr}`);
+        found = res?.result?.value === true;
       }
     }
 
