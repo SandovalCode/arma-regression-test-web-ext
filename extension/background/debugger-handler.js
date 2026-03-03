@@ -50,7 +50,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
           if (attaching || replayState.aborted) return;
           attaching = true;
           try {
-            const tab = await chrome.tabs.get(tabId).catch(() => null);
+            const tab = await chrome.tabs.get(tabId).catch(console.error);
             const url = tab?.url ?? '';
             if (!url.startsWith('https://') && !url.startsWith('http://')) {
               attaching = false;

@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         // Detach the debugger immediately so any in-flight CDP call throws right away,
         // terminating the current step without waiting for it to finish naturally.
         if (replayState.active && replayState.tabId) {
-          chrome.debugger.detach({ tabId: replayState.tabId }).catch(() => {});
+          chrome.debugger.detach({ tabId: replayState.tabId }).catch(console.error);
         }
         sendResponse({ ok: true });
         break;
@@ -183,7 +183,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
                 el.dispatchEvent(new Event('change', { bubbles: true }));
               },
               args: [step.selectors, step.fallbackValue],
-            }).catch(() => {});
+            }).catch(console.error);
           }
 
           sendResponse({ ok: true });
@@ -201,7 +201,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         // the right-click and the moment the user selects a context menu item.
         if (recordingState.active) {
           contextMenu.lastEl = payload;
-          chrome.storage.session.set({ lastContextMenuEl: payload }).catch(() => {});
+          chrome.storage.session.set({ lastContextMenuEl: payload }).catch(console.error);
         }
         sendResponse({ ok: true }); // close the port immediately (fire-and-forget)
         break;

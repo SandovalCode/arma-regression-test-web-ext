@@ -5,7 +5,7 @@ export function cdp(tabId, method, params = {}) {
 
 // ── Broadcast to all extension views ──────────────────────────────────────────
 export function broadcast(type, payload = {}) {
-  chrome.runtime.sendMessage({ type, payload }).catch(() => {});
+  chrome.runtime.sendMessage({ type, payload }).catch(console.error);
 }
 
 // ── Step detail for progress display ──────────────────────────────────────────

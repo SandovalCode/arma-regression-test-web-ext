@@ -1,5 +1,9 @@
-import { resolveSelector, waitForSelector } from './selector-resolver.js';
-import { NAV_TIMEOUT_MS, STEP_TIMEOUT_MS, POLLING_DOMAINS } from './constants.js';
+import { resolveSelector, waitForSelector } from "./selector-resolver.js";
+import {
+  NAV_TIMEOUT_MS,
+  STEP_TIMEOUT_MS,
+  POLLING_DOMAINS,
+} from "./constants.js";
 
 /**
  * Execute a single recording step using the Chrome DevTools Protocol.
@@ -11,30 +15,80 @@ import { NAV_TIMEOUT_MS, STEP_TIMEOUT_MS, POLLING_DOMAINS } from './constants.js
  * @param {function} cdp            — cdp(tabId, method, params) helper from service worker
  * @param {Map}     variables       — Map<variableName, value> for user-defined saved variables
  */
-export async function executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables = new Map()) {
+export async function executeStep(
+  step,
+  tabId,
+  frameContextMap,
+  clipboardVars,
+  cdp,
+  variables = new Map(),
+) {
   const contextId = resolveContext(step, frameContextMap);
 
   switch (step.type) {
-    case 'setViewport':    return execSetViewport(step, tabId, cdp);
-    case 'navigate':       return execNavigate(step, tabId, cdp);
-    case 'click':          return execClick(step, tabId, contextId, cdp);
-    case 'doubleClick':    return execDoubleClick(step, tabId, contextId, cdp);
-    case 'hover':          return execHover(step, tabId, contextId, cdp);
-    case 'change':         return execChange(step, tabId, contextId, cdp);
-    case 'selectOption':   return execSelectOption(step, tabId, contextId, cdp);
-    case 'keyDown':        return execKeyDown(step, tabId, cdp);
-    case 'keyUp':          return execKeyUp(step, tabId, cdp);
-    case 'waitForElement':  return execWaitForElement(step, tabId, contextId, cdp);
-    case 'waitForPageLoad': return execWaitForPageLoad(tabId, cdp);
-    case 'scroll':         return execScroll(step, tabId, contextId, cdp);
-    case 'copy':           return execCopyVariableAtRecording(step, tabId, contextId, clipboardVars, cdp);
-    case 'paste':          return execPasteVariableAtRecording(step, tabId, contextId, clipboardVars, cdp);
-    case 'saveVariable':   return execCopyVariableAtReplaying(step, tabId, contextId, cdp, variables);
-    case 'pasteVariable':  return execPasteVariableAtReplaying(step, tabId, contextId, cdp, variables);
-    case 'wait':           return sleep(Math.max(0, step.duration ?? 0));
+    case "setViewport":
+      return execSetViewport(step, tabId, cdp);
+    case "navigate":
+      return execNavigate(step, tabId, cdp);
+    case "click":
+      return execClick(step, tabId, contextId, cdp);
+    case "doubleClick":
+      return execDoubleClick(step, tabId, contextId, cdp);
+    case "hover":
+      return execHover(step, tabId, contextId, cdp);
+    case "change":
+      return execChange(step, tabId, contextId, cdp);
+    case "selectOption":
+      return execSelectOption(step, tabId, contextId, cdp);
+    case "keyDown":
+      return execKeyDown(step, tabId, cdp);
+    case "keyUp":
+      return execKeyUp(step, tabId, cdp);
+    case "waitForElement":
+      return execWaitForElement(step, tabId, contextId, cdp);
+    case "waitForPageLoad":
+      return execWaitForPageLoad(tabId, cdp);
+    case "scroll":
+      return execScroll(step, tabId, contextId, cdp);
+    case "copy":
+      return execCopyVariableAtRecording(
+        step,
+        tabId,
+        contextId,
+        clipboardVars,
+        cdp,
+      );
+    case "paste":
+      return execPasteVariableAtRecording(
+        step,
+        tabId,
+        contextId,
+        clipboardVars,
+        cdp,
+      );
+    case "saveVariable":
+      return execCopyVariableAtReplaying(
+        step,
+        tabId,
+        contextId,
+        cdp,
+        variables,
+      );
+    case "pasteVariable":
+      return execPasteVariableAtReplaying(
+        step,
+        tabId,
+        contextId,
+        cdp,
+        variables,
+      );
+    case "wait":
+      return sleep(Math.max(0, step.duration ?? 0));
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
-      console.warn(`[step-executor] Unknown step type: ${step.type} — skipping`);
+      console.warn(
+        `[step-executor] Unknown step type: ${step.type} — skipping`,
+      );
   }
 }
 
@@ -49,25 +103,25 @@ function resolveContext(step, _frameContextMap) {
 // ── setViewport ────────────────────────────────────────────────────────────────
 
 async function execSetViewport(step, tabId, cdp) {
-  await cdp(tabId, 'Emulation.setDeviceMetricsOverride', {
-    width:             step.width ?? 1280,
-    height:            step.height ?? 720,
+  await cdp(tabId, "Emulation.setDeviceMetricsOverride", {
+    width: step.width ?? 1280,
+    height: step.height ?? 720,
     deviceScaleFactor: step.deviceScaleFactor ?? 1,
-    mobile:            step.isMobile ?? false,
+    mobile: step.isMobile ?? false,
   });
 }
 
 // ── navigate ───────────────────────────────────────────────────────────────────
 
 async function execNavigate(step, tabId, cdp) {
-  const targetUrl = step.url ?? '';
+  const targetUrl = step.url ?? "";
   if (!targetUrl) return;
 
   const tab = await chrome.tabs.get(tabId);
 
-  if (tab.status === 'loading') {
+  if (tab.status === "loading") {
     // tab.pendingUrl is the in-flight destination (more reliable than tab.url here).
-    const pendingUrl = tab.pendingUrl || tab.url || '';
+    const pendingUrl = tab.pendingUrl || tab.url || "";
     if (normalizeUrl(pendingUrl) === normalizeUrl(targetUrl)) {
       await waitForNavigation(tabId, NAV_TIMEOUT_MS);
       await sleep(600);
@@ -76,17 +130,17 @@ async function execNavigate(step, tabId, cdp) {
     // Loading to a different URL — wait for it to settle, then check again.
     await waitForNavigation(tabId, NAV_TIMEOUT_MS);
     const settled = await chrome.tabs.get(tabId);
-    if (normalizeUrl(settled.url ?? '') === normalizeUrl(targetUrl)) {
+    if (normalizeUrl(settled.url ?? "") === normalizeUrl(targetUrl)) {
       await sleep(600);
       return;
     }
-  } else if (normalizeUrl(tab.url ?? '') === normalizeUrl(targetUrl)) {
+  } else if (normalizeUrl(tab.url ?? "") === normalizeUrl(targetUrl)) {
     await sleep(300);
     return;
   }
 
   const navPromise = waitForNavigation(tabId, NAV_TIMEOUT_MS);
-  await cdp(tabId, 'Page.navigate', { url: targetUrl });
+  await cdp(tabId, "Page.navigate", { url: targetUrl });
   await navPromise;
   await sleep(600); // give JS frameworks time to boot
 }
@@ -113,7 +167,10 @@ function waitForNavigation(tabId, timeoutMs) {
 
     function handler(source, method) {
       if (source.tabId !== tabId) return;
-      if (method === 'Page.loadEventFired' || method === 'Page.domContentEventFired') {
+      if (
+        method === "Page.loadEventFired" ||
+        method === "Page.domContentEventFired"
+      ) {
         clearTimeout(timer);
         chrome.debugger.onEvent.removeListener(handler);
         resolve();
@@ -140,16 +197,21 @@ async function execClick(step, tabId, contextId, cdp) {
     }
   }
   if (cx == null) {
-    const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
+    const { x, y } = await resolveSelector(
+      step.selectors,
+      tabId,
+      contextId,
+      cdp,
+    );
     cx = x + (step.offsetX ?? 0);
     cy = y + (step.offsetY ?? 0);
   }
 
-  const hasNav = step.assertedEvents?.some(e => e.type === 'navigation');
+  const hasNav = step.assertedEvents?.some((e) => e.type === "navigation");
   const navPromise = hasNav ? waitForNavigation(tabId, NAV_TIMEOUT_MS) : null;
 
   // mouseMoved triggers mouseenter on the element and all its ancestors (CDP real event).
-  await dispatchMouse(tabId, 'mouseMoved', cx, cy, 'none', 0, cdp);
+  await dispatchMouse(tabId, "mouseMoved", cx, cy, "none", 0, cdp);
 
   // Wait for mouseenter handlers to finish before clicking.
   // Frameworks like Salesforce Aura/LWC activate/show controls in response to
@@ -159,16 +221,16 @@ async function execClick(step, tabId, contextId, cdp) {
   // Explicitly focus the element before pressing — mirrors what a real click does:
   // blur fires on the previously focused element, focus fires on this one.
   if (objectId) {
-    await cdp(tabId, 'Runtime.callFunctionOn', {
+    await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: 'function() { this.focus(); }',
+      functionDeclaration: "function() { this.focus(); }",
       returnByValue: true,
-    }).catch(() => {});
+    }).catch(console.error);
   }
 
-  await dispatchMouse(tabId, 'mousePressed',  cx, cy, 'left', 1, cdp);
+  await dispatchMouse(tabId, "mousePressed", cx, cy, "left", 1, cdp);
   if (step.duration) await sleep(step.duration);
-  await dispatchMouse(tabId, 'mouseReleased', cx, cy, 'left', 1, cdp);
+  await dispatchMouse(tabId, "mouseReleased", cx, cy, "left", 1, cdp);
 
   // Belt-and-suspenders: fire synthetic JS events on the element so that
   // Salesforce LWC (and other frameworks) patched event handlers also fire.
@@ -176,7 +238,7 @@ async function execClick(step, tabId, contextId, cdp) {
   // fires a real browser click event. A second synthetic click would toggle any
   // dropdown/toggle button closed immediately after it opens.
   if (objectId) {
-    await cdp(tabId, 'Runtime.callFunctionOn', {
+    await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: `function() {
         const cx = ${cx}, cy = ${cy};
@@ -188,7 +250,7 @@ async function execClick(step, tabId, contextId, cdp) {
         });
       }`,
       returnByValue: true,
-    }).catch(() => {});
+    }).catch(console.error);
   }
 
   if (navPromise) {
@@ -210,16 +272,21 @@ async function execDoubleClick(step, tabId, contextId, cdp) {
     }
   }
   if (cx == null) {
-    const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
+    const { x, y } = await resolveSelector(
+      step.selectors,
+      tabId,
+      contextId,
+      cdp,
+    );
     cx = x + (step.offsetX ?? 0);
     cy = y + (step.offsetY ?? 0);
   }
 
-  await dispatchMouse(tabId, 'mouseMoved',   cx, cy, 'none', 0, cdp);
-  await dispatchMouse(tabId, 'mousePressed', cx, cy, 'left', 1, cdp);
-  await dispatchMouse(tabId, 'mouseReleased',cx, cy, 'left', 1, cdp);
-  await dispatchMouse(tabId, 'mousePressed', cx, cy, 'left', 2, cdp);
-  await dispatchMouse(tabId, 'mouseReleased',cx, cy, 'left', 2, cdp);
+  await dispatchMouse(tabId, "mouseMoved", cx, cy, "none", 0, cdp);
+  await dispatchMouse(tabId, "mousePressed", cx, cy, "left", 1, cdp);
+  await dispatchMouse(tabId, "mouseReleased", cx, cy, "left", 1, cdp);
+  await dispatchMouse(tabId, "mousePressed", cx, cy, "left", 2, cdp);
+  await dispatchMouse(tabId, "mouseReleased", cx, cy, "left", 2, cdp);
 }
 
 // ── hover ──────────────────────────────────────────────────────────────────────
@@ -235,36 +302,53 @@ async function execHover(step, tabId, contextId, cdp) {
     }
   }
   if (cx == null) {
-    const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
+    const { x, y } = await resolveSelector(
+      step.selectors,
+      tabId,
+      contextId,
+      cdp,
+    );
     cx = x + (step.offsetX ?? 0);
     cy = y + (step.offsetY ?? 0);
   }
-  await dispatchMouse(tabId, 'mouseMoved', cx, cy, 'none', 0, cdp);
+  await dispatchMouse(tabId, "mouseMoved", cx, cy, "none", 0, cdp);
 }
 
 // ── change (text input, select) ────────────────────────────────────────────────
 
 async function execChange(step, tabId, contextId, cdp) {
-  const value = step.value ?? '';
+  const value = step.value ?? "";
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-  if (!objectId) throw new Error(`Could not resolve element for change step. Tried: ${JSON.stringify(step.selectors)}`);
+  if (!objectId)
+    throw new Error(
+      `Could not resolve element for change step. Tried: ${JSON.stringify(step.selectors)}`,
+    );
 
-  const tagRes = await cdp(tabId, 'Runtime.callFunctionOn', {
+  const tagRes = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
-    functionDeclaration: 'function() { return this.tagName; }',
+    functionDeclaration:
+      'function() { return { tag: this.tagName, cls: this.className ?? "" }; }',
     returnByValue: true,
   });
-  const tagName = tagRes?.result?.value ?? '';
+  const { tag: tagName = "", cls: className = "" } =
+    tagRes?.result?.value ?? {};
 
   // A step recorded from a <select> always has step.label set
-  const isSelectStep = tagName === 'SELECT' || step.label !== undefined;
+  const isSelectStep = tagName === "SELECT" || step.label !== undefined;
+
+  // Custom autocomplete inputs (class contains "autocomplete") need partial typing
+  // to trigger their AJAX dropdown, then a click on the matching result.
+  // All other inputs get the full value inserted directly.
+  const isAutocompleteInput = className.split(/\s+/).includes("autocomplete");
 
   if (isSelectStep) {
     // Wait for the target option to exist — selects may load options via AJAX
     // (e.g. serv_id). Re-resolves on each poll so stale objectIds after a DOM
     // replacement don't hang the loop. Returns the fresh live objectId.
-    const readyId = await waitForOption(step.selectors, value, tabId, contextId, cdp) ?? objectId;
+    const readyId =
+      (await waitForOption(step.selectors, value, tabId, contextId, cdp)) ??
+      objectId;
 
     let cx, cy;
     const selectBox = await scrollIntoViewAndGetRect(readyId, tabId, cdp);
@@ -275,14 +359,14 @@ async function execChange(step, tabId, contextId, cdp) {
 
     // 1. mouseenter via CDP (mouseMoved does NOT open the OS-level dropdown)
     if (cx != null) {
-      await dispatchMouse(tabId, 'mouseMoved', cx, cy, 'none', 0, cdp);
+      await dispatchMouse(tabId, "mouseMoved", cx, cy, "none", 0, cdp);
       await sleep(80);
     }
 
     // 2. click (synthetic JS) → 3. focus → 4. value → 5. change → 6. blur
     // Synthetic MouseEvent fires click listeners without opening the OS dropdown,
     // which would block subsequent JS for plain native selects (e.g. serv_id).
-    await cdp(tabId, 'Runtime.callFunctionOn', {
+    await cdp(tabId, "Runtime.callFunctionOn", {
       objectId: readyId,
       functionDeclaration: `function() {
         this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
@@ -295,17 +379,20 @@ async function execChange(step, tabId, contextId, cdp) {
       returnByValue: true,
     });
   } else {
-    await cdp(tabId, 'Runtime.callFunctionOn', {
+    await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
+      functionDeclaration:
+        'function() { this.focus(); this.select(); this.value = ""; }',
       returnByValue: true,
     });
 
     if (value) {
-      await cdp(tabId, 'Input.insertText', { text: value.slice(0, 10) });
+      await cdp(tabId, "Input.insertText", {
+        text: isAutocompleteInput ? value.slice(0, 10) : value,
+      });
     }
 
-    await cdp(tabId, 'Runtime.callFunctionOn', {
+    await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: `function() {
         this.dispatchEvent(new Event('input',  { bubbles: true }));
@@ -335,25 +422,58 @@ async function execSelectOption(step, tabId, contextId, cdp) {
   // the actual <select name="serv_id">, causing "options is not iterable".
   const normalized = Array.isArray(step.selectors[0])
     ? step.selectors
-    : step.selectors.map(s => [s]);
+    : step.selectors.map((s) => [s]);
   const selectFirst = [
-    ...normalized.filter(c => (c[0] ?? '').startsWith('select')),
-    ...normalized.filter(c => !(c[0] ?? '').startsWith('select')),
+    ...normalized.filter((c) => (c[0] ?? "").startsWith("select")),
+    ...normalized.filter((c) => !(c[0] ?? "").startsWith("select")),
   ];
 
   const objectId = await resolveObjectId(selectFirst, tabId, contextId, cdp);
-  if (!objectId) throw new Error(`selectOption: could not find select. Tried: ${JSON.stringify(selectFirst)}`);
+  if (!objectId)
+    throw new Error(
+      `selectOption: could not find select. Tried: ${JSON.stringify(selectFirst)}`,
+    );
 
   await scrollIntoViewAndGetRect(objectId, tabId, cdp);
 
   // 1. Custom dropdown: if a library rendered visible option elements, click one.
   const label = step.label ?? step.value;
-  const optCoords = await findVisibleOptionCoords(label, step.value, tabId, contextId, cdp);
+  const optCoords = await findVisibleOptionCoords(
+    label,
+    step.value,
+    tabId,
+    contextId,
+    cdp,
+  );
   if (optCoords) {
-    await dispatchMouse(tabId, 'mouseMoved',    optCoords.x, optCoords.y, 'none', 0, cdp);
+    await dispatchMouse(
+      tabId,
+      "mouseMoved",
+      optCoords.x,
+      optCoords.y,
+      "none",
+      0,
+      cdp,
+    );
     await sleep(50);
-    await dispatchMouse(tabId, 'mousePressed',  optCoords.x, optCoords.y, 'left', 1, cdp);
-    await dispatchMouse(tabId, 'mouseReleased', optCoords.x, optCoords.y, 'left', 1, cdp);
+    await dispatchMouse(
+      tabId,
+      "mousePressed",
+      optCoords.x,
+      optCoords.y,
+      "left",
+      1,
+      cdp,
+    );
+    await dispatchMouse(
+      tabId,
+      "mouseReleased",
+      optCoords.x,
+      optCoords.y,
+      "left",
+      1,
+      cdp,
+    );
     return;
   }
 
@@ -364,7 +484,7 @@ async function execSelectOption(step, tabId, contextId, cdp) {
   //    Solution: set the value immediately AND register a capture-phase submit
   //    listener on the form that re-applies the value right before submission —
   //    no AJAX running after the button click can undo this.
-  const setRes = await cdp(tabId, 'Runtime.callFunctionOn', {
+  const setRes = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration: `function() {
       const v = ${JSON.stringify(step.value)};
@@ -395,7 +515,10 @@ async function execSelectOption(step, tabId, contextId, cdp) {
     returnByValue: true,
   });
   if (setRes?.exceptionDetails) {
-    console.warn(`[selectOption] exception:`, JSON.stringify(setRes.exceptionDetails));
+    console.warn(
+      `[selectOption] exception:`,
+      JSON.stringify(setRes.exceptionDetails),
+    );
   }
 }
 
@@ -405,7 +528,13 @@ async function execSelectOption(step, tabId, contextId, cdp) {
  * Works for Select2, Chosen, Tom-Select, and other custom dropdown libraries.
  * Returns { x, y } viewport coordinates to click, or null for native selects.
  */
-async function findVisibleOptionCoords(labelText, value, tabId, contextId, cdp) {
+async function findVisibleOptionCoords(
+  labelText,
+  value,
+  tabId,
+  contextId,
+  cdp,
+) {
   const expr = `
     (function() {
       const label = ${JSON.stringify(String(labelText))};
@@ -435,14 +564,14 @@ async function findVisibleOptionCoords(labelText, value, tabId, contextId, cdp) 
   `;
   const params = { expression: expr, returnByValue: true };
   if (contextId) params.contextId = contextId;
-  const res = await cdp(tabId, 'Runtime.evaluate', params).catch(() => null);
+  const res = await cdp(tabId, "Runtime.evaluate", params).catch(console.error);
   return res?.result?.value ?? null;
 }
 
 // ── Autocomplete option picker ──────────────────────────────────────────────────
 
 async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
-  const result = await cdp(tabId, 'Runtime.evaluate', {
+  const result = await cdp(tabId, "Runtime.evaluate", {
     expression: `
       (function(target) {
         const selectors = [
@@ -486,10 +615,28 @@ async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
   const coords = result?.result?.value;
   if (!coords) return false;
 
-  await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved',    x: coords.x, y: coords.y, button: 'none', clickCount: 0 });
+  await cdp(tabId, "Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: coords.x,
+    y: coords.y,
+    button: "none",
+    clickCount: 0,
+  });
   await sleep(50);
-  await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed',  x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
-  await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+  await cdp(tabId, "Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: coords.x,
+    y: coords.y,
+    button: "left",
+    clickCount: 1,
+  });
+  await cdp(tabId, "Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: coords.x,
+    y: coords.y,
+    button: "left",
+    clickCount: 1,
+  });
 
   return true;
 }
@@ -497,16 +644,16 @@ async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
 // ── keyDown / keyUp ────────────────────────────────────────────────────────────
 
 const KEY_MODIFIERS = {
-  Alt:     1,
+  Alt: 1,
   Control: 2,
-  Meta:    4,
-  Shift:   8,
+  Meta: 4,
+  Shift: 8,
 };
 
 async function execKeyDown(step, tabId, cdp) {
   const modifiers = KEY_MODIFIERS[step.key] ?? 0;
-  await cdp(tabId, 'Input.dispatchKeyEvent', {
-    type: 'keyDown',
+  await cdp(tabId, "Input.dispatchKeyEvent", {
+    type: "keyDown",
     key: step.key,
     modifiers,
   });
@@ -514,8 +661,8 @@ async function execKeyDown(step, tabId, cdp) {
 
 async function execKeyUp(step, tabId, cdp) {
   const modifiers = KEY_MODIFIERS[step.key] ?? 0;
-  await cdp(tabId, 'Input.dispatchKeyEvent', {
-    type: 'keyUp',
+  await cdp(tabId, "Input.dispatchKeyEvent", {
+    type: "keyUp",
     key: step.key,
     modifiers,
   });
@@ -532,8 +679,8 @@ async function execWaitForPageLoad(tabId, cdp) {
   // never reaches 'complete'. Detect these by hostname and use a fixed sleep.
   try {
     const tab = await chrome.tabs.get(tabId);
-    const hostname = new URL(tab.url ?? '').hostname;
-    if (POLLING_DOMAINS.some(d => hostname.endsWith(d))) {
+    const hostname = new URL(tab.url ?? "").hostname;
+    if (POLLING_DOMAINS.some((d) => hostname.endsWith(d))) {
       await sleep(3000);
       return;
     }
@@ -544,13 +691,13 @@ async function execWaitForPageLoad(tabId, cdp) {
   const deadline = Date.now() + NAV_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
-    const res = await cdp(tabId, 'Runtime.evaluate', {
-      expression: 'document.readyState',
+    const res = await cdp(tabId, "Runtime.evaluate", {
+      expression: "document.readyState",
       returnByValue: true,
     });
     const state = res?.result?.value;
-    if (state === 'complete') return;
-    if (state === 'interactive') {
+    if (state === "complete") return;
+    if (state === "interactive") {
       await sleep(INTERACTIVE_SETTLE_MS);
       return;
     }
@@ -564,30 +711,47 @@ async function execWaitForPageLoad(tabId, cdp) {
 async function execScroll(step, tabId, contextId, cdp) {
   if (step.selectors?.length) {
     try {
-      const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
-      await dispatchMouse(tabId, 'mouseWheel', x, y, 'none', 0, cdp, {
+      const { x, y } = await resolveSelector(
+        step.selectors,
+        tabId,
+        contextId,
+        cdp,
+      );
+      await dispatchMouse(tabId, "mouseWheel", x, y, "none", 0, cdp, {
         deltaX: step.x ?? 0,
         deltaY: step.y ?? 0,
       });
       return;
     } catch (_) {}
   }
-  await cdp(tabId, 'Runtime.evaluate', {
+  await cdp(tabId, "Runtime.evaluate", {
     expression: `window.scrollBy(${step.x ?? 0}, ${step.y ?? 0})`,
   });
 }
 
 // ── copy ───────────────────────────────────────────────────────────────────────
 
-async function execCopyVariableAtRecording(step, tabId, contextId, clipboardVars, cdp) {
+async function execCopyVariableAtRecording(
+  step,
+  tabId,
+  contextId,
+  clipboardVars,
+  cdp,
+) {
   // Read directly from the recorded element — window.getSelection() is unreliable
   // at replay time (no human interaction) and can pick up stray selected text left
   // by previous CDP clicks (e.g. "Basic Search" link text).
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-  console.log(`[Copy] var="${step.variableName}" objectId=${objectId ? 'found' : 'NOT FOUND'} selectors=`, JSON.stringify(step.selectors));
-  if (!objectId) throw new Error(`copy: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`);
+  console.log(
+    `[Copy] var="${step.variableName}" objectId=${objectId ? "found" : "NOT FOUND"} selectors=`,
+    JSON.stringify(step.selectors),
+  );
+  if (!objectId)
+    throw new Error(
+      `copy: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`,
+    );
 
-  const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+  const res = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration: `function() {
       if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
@@ -596,53 +760,63 @@ async function execCopyVariableAtRecording(step, tabId, contextId, clipboardVars
       return this.textContent?.trim() ?? '';
     }`,
     returnByValue: true,
-  }).catch(() => null);
+  }).catch(console.error);
 
-  const captured = res?.result?.value ?? '';
+  const captured = res?.result?.value ?? "";
   console.log(`[Copy] var="${step.variableName}" captured="${captured}"`);
-  if (!captured) throw new Error(`copy: element found but value is empty for variable "${step.variableName}"`);
+  if (!captured)
+    throw new Error(
+      `copy: element found but value is empty for variable "${step.variableName}"`,
+    );
 
   clipboardVars.set(step.variableName, captured);
 }
 
 // ── paste ──────────────────────────────────────────────────────────────────────
 
-async function execPasteVariableAtRecording(step, tabId, contextId, clipboardVars, cdp) {
+async function execPasteVariableAtRecording(
+  step,
+  tabId,
+  contextId,
+  clipboardVars,
+  cdp,
+) {
   const textToPaste = clipboardVars.get(step.variableName);
   console.log(`[Paste] var="${step.variableName}" value="${textToPaste}"`);
-  if (!textToPaste) throw new Error(`paste: no runtime value found for variable "${step.variableName}" — make sure a copy step ran before this`);
+  if (!textToPaste)
+    throw new Error(
+      `paste: no runtime value found for variable "${step.variableName}" — make sure a copy step ran before this`,
+    );
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-  if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
+  if (!objectId)
+    throw new Error(
+      `Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`,
+    );
 
-  await cdp(tabId, 'Runtime.callFunctionOn', {
-    objectId,
-    functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
-    returnByValue: true,
-  });
-
-  await cdp(tabId, 'Input.insertText', { text: textToPaste });
-
-  await cdp(tabId, 'Runtime.callFunctionOn', {
-    objectId,
-    functionDeclaration: `function(v) {
-      if (this.value !== v) this.value = v;
-      this.dispatchEvent(new Event('input',  { bubbles: true }));
-      this.dispatchEvent(new Event('change', { bubbles: true }));
-    }`,
-    arguments: [{ value: textToPaste }],
-    returnByValue: true,
-  });
+  await pasteTextIntoElement(objectId, textToPaste, tabId, cdp);
 }
 
 // ── copyVariable (captures live value at replay time) ──────────────────────────
 
-async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variables) {
+async function execCopyVariableAtReplaying(
+  step,
+  tabId,
+  contextId,
+  cdp,
+  variables,
+) {
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-  console.log(`[CopyVariable] var="${step.variableName}" objectId=${objectId ? 'found' : 'NOT FOUND'} selectors=`, JSON.stringify(step.selectors));
-  if (!objectId) throw new Error(`copyVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`);
+  console.log(
+    `[CopyVariable] var="${step.variableName}" objectId=${objectId ? "found" : "NOT FOUND"} selectors=`,
+    JSON.stringify(step.selectors),
+  );
+  if (!objectId)
+    throw new Error(
+      `copyVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`,
+    );
 
-  const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+  const res = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration: `function() {
       if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
@@ -655,9 +829,12 @@ async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variable
 
   const value = res?.result?.value;
   console.log(`[CopyVariable] var="${step.variableName}" captured="${value}"`);
-  if (!value) throw new Error(`copyVariable: element found but value is empty for variable "${step.variableName}"`);
+  if (!value)
+    throw new Error(
+      `copyVariable: element found but value is empty for variable "${step.variableName}"`,
+    );
 
-  const suffix = variables.get('__replaySuffix__') ?? '';
+  const suffix = variables.get("__replaySuffix__") ?? "";
   const varKey = suffix ? `${step.variableName}-${suffix}` : step.variableName;
   variables.set(varKey, value);
   console.log(`[CopyVariable] stored as key="${varKey}"`);
@@ -665,30 +842,85 @@ async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variable
 
 // ── pasteVariable (uses value copied at replay time) ───────────────────────────
 
-async function execPasteVariableAtReplaying(step, tabId, contextId, cdp, variables) {
-  const suffix = variables.get('__replaySuffix__') ?? '';
+async function execPasteVariableAtReplaying(
+  step,
+  tabId,
+  contextId,
+  cdp,
+  variables,
+) {
+  const suffix = variables.get("__replaySuffix__") ?? "";
   const varKey = suffix ? `${step.variableName}-${suffix}` : step.variableName;
   const textToPaste = variables.get(varKey);
-  console.log(`[PasteVariable] var="${step.variableName}" key="${varKey}" value="${textToPaste}"`);
-  if (!textToPaste) throw new Error(`pasteVariable: no runtime value found for key "${varKey}" — make sure a copyVariable step ran before this`);
+  console.log(
+    `[PasteVariable] var="${step.variableName}" key="${varKey}" value="${textToPaste}"`,
+  );
+  if (!textToPaste)
+    throw new Error(
+      `pasteVariable: no runtime value found for key "${varKey}" — make sure a copyVariable step ran before this`,
+    );
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-  if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
+  if (!objectId)
+    throw new Error(
+      `Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`,
+    );
 
-  await cdp(tabId, 'Runtime.callFunctionOn', {
-    objectId,
-    functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
-    returnByValue: true,
+  await pasteTextIntoElement(objectId, textToPaste, tabId, cdp);
+}
+
+// ── pasteTextIntoElement ────────────────────────────────────────────────────────
+//
+// Shared paste logic used by both paste step variants.
+//
+// The key problem with LWC shadow-DOM inputs (and type="search" in particular):
+// Runtime.callFunctionOn → this.focus() goes through LWC's synthetic event system
+// and does NOT transfer real keyboard focus to the element.  Input.insertText then
+// goes to whatever happened to be focused before, producing no visible output.
+//
+// Fix: use CDP mouse events (same path as execClick) to give the element real focus,
+// then insert text, then fire input/change/keydown so search/autocomplete listeners
+// (aria-controls="suggestionsList-…") actually trigger.
+//
+async function pasteTextIntoElement(objectId, textToPaste, tabId, cdp) {
+  // 1. Scroll into view so the element is visible (required before DOM.focus).
+  await scrollIntoViewAndGetRect(objectId, tabId, cdp);
+
+  // 2. Use CDP DOM.focus — focuses the exact node by objectId without needing
+  //    coordinates. Unlike JS this.focus() it bypasses LWC's synthetic event
+  //    system and gives the element real keyboard focus. Unlike dispatchMouse
+  //    it cannot accidentally hit a different element (e.g. a nearby link).
+  await cdp(tabId, "DOM.focus", { objectId }).catch((e) => {
+    console.error(e);
+    // Fallback for elements that don't accept DOM.focus (e.g. non-focusable divs)
+    return cdp(tabId, "Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: "function() { this.focus(); }",
+      returnByValue: true,
+    }).catch(console.error);
   });
+  await sleep(80);
 
-  await cdp(tabId, 'Input.insertText', { text: textToPaste });
+  // 3. Clear the current value.
+  await cdp(tabId, "Runtime.callFunctionOn", {
+    objectId,
+    functionDeclaration: 'function() { this.select(); this.value = ""; }',
+    returnByValue: true,
+  }).catch(console.error);
 
-  await cdp(tabId, 'Runtime.callFunctionOn', {
+  // 4. Insert text — works because DOM.focus gave the element real keyboard focus.
+  await cdp(tabId, "Input.insertText", { text: textToPaste });
+
+  // 5. Ensure value is set and fire all relevant events so search/autocomplete
+  //    listeners (input, change, keydown) pick up the new value.
+  await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration: `function(v) {
       if (this.value !== v) this.value = v;
       this.dispatchEvent(new Event('input',  { bubbles: true }));
       this.dispatchEvent(new Event('change', { bubbles: true }));
+      this.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true }));
+      this.dispatchEvent(new KeyboardEvent('keyup',   { bubbles: true, cancelable: true }));
     }`,
     arguments: [{ value: textToPaste }],
     returnByValue: true,
@@ -701,20 +933,25 @@ async function execPasteVariableAtReplaying(step, tabId, contextId, cdp, variabl
  * Resolves selectors to a Runtime objectId so we can call functions on the element.
  */
 async function resolveObjectId(selectors, tabId, contextId, cdp) {
-  const normalized = Array.isArray(selectors[0]) ? selectors : selectors.map(s => [s]);
+  const normalized = Array.isArray(selectors[0])
+    ? selectors
+    : selectors.map((s) => [s]);
 
   for (const candidate of normalized) {
     const sel = candidate[0];
-    if (!sel || typeof sel !== 'string') continue;
+    if (!sel || typeof sel !== "string") continue;
 
     try {
       let expression;
-      if (sel.startsWith('xpath/')) {
+      if (sel.startsWith("xpath/")) {
         const xp = sel.slice(6);
         expression = `document.evaluate(${JSON.stringify(xp)}, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue`;
-      } else if (sel.startsWith('aria/')) {
+      } else if (sel.startsWith("aria/")) {
         // Simplified aria lookup for objectId resolution
-        const label = sel.slice(5).replace(/\[role=["']?\w+["']?\]$/, '').trim();
+        const label = sel
+          .slice(5)
+          .replace(/\[role=["']?\w+["']?\]$/, "")
+          .trim();
         expression = `
           [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label],[aria-labelledby]')]
           .find(el =>
@@ -722,7 +959,7 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
             el.textContent.trim() === ${JSON.stringify(label)}
           )
         `;
-      } else if (sel.startsWith('pierce/')) {
+      } else if (sel.startsWith("pierce/")) {
         const css = sel.slice(7);
         expression = `
           (function piercedQS(root, s) {
@@ -732,8 +969,11 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
             return null;
           })(document, ${JSON.stringify(css)})
         `;
-      } else if (sel.includes(' >>> ')) {
-        const parts = sel.split(' >>> ').map(s => s.trim()).filter(Boolean);
+      } else if (sel.includes(" >>> ")) {
+        const parts = sel
+          .split(" >>> ")
+          .map((s) => s.trim())
+          .filter(Boolean);
         expression = `
           (function() {
             const parts = ${JSON.stringify(parts)};
@@ -747,7 +987,7 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
             return null;
           })()
         `;
-      } else if (sel.startsWith('text/')) {
+      } else if (sel.startsWith("text/")) {
         const text = sel.slice(5);
         expression = `
           [...document.querySelectorAll('a,button,span,div,td,th,li,label')]
@@ -756,7 +996,7 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
       } else {
         // Use getElementById for #id selectors — LWC (Salesforce) patches document.querySelector
         // to enforce shadow encapsulation but does NOT patch getElementById.
-        expression = sel.startsWith('#')
+        expression = sel.startsWith("#")
           ? `document.getElementById(${JSON.stringify(sel.slice(1))})`
           : `document.querySelector(${JSON.stringify(sel)})`;
       }
@@ -764,7 +1004,7 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
       const params = { expression, returnByValue: false };
       if (contextId) params.contextId = contextId;
 
-      const res = await cdp(tabId, 'Runtime.evaluate', params);
+      const res = await cdp(tabId, "Runtime.evaluate", params);
       const objectId = res?.result?.objectId;
       if (objectId) return objectId;
     } catch (_) {}
@@ -773,13 +1013,22 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
   // Fallback: native CDP DOM.querySelector — bypasses JS-patched querySelector (e.g. LWC synthetic shadow)
   for (const candidate of normalized) {
     const sel = candidate[0];
-    if (!sel || typeof sel !== 'string' || sel.includes('/') || sel.includes(' >>> ')) continue;
+    if (
+      !sel ||
+      typeof sel !== "string" ||
+      sel.includes("/") ||
+      sel.includes(" >>> ")
+    )
+      continue;
     try {
-      const { root } = await cdp(tabId, 'DOM.getDocument', { depth: 1 });
-      const res = await cdp(tabId, 'DOM.querySelector', { nodeId: root.nodeId, selector: sel });
+      const { root } = await cdp(tabId, "DOM.getDocument", { depth: 1 });
+      const res = await cdp(tabId, "DOM.querySelector", {
+        nodeId: root.nodeId,
+        selector: sel,
+      });
       const nodeId = res?.nodeId;
       if (!nodeId) continue;
-      const resolved = await cdp(tabId, 'DOM.resolveNode', { nodeId });
+      const resolved = await cdp(tabId, "DOM.resolveNode", { nodeId });
       const objectId = resolved?.object?.objectId;
       if (objectId) return objectId;
     } catch (_) {}
@@ -788,8 +1037,17 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
   return null;
 }
 
-async function dispatchMouse(tabId, type, x, y, button, clickCount, cdp, extra = {}) {
-  await cdp(tabId, 'Input.dispatchMouseEvent', {
+async function dispatchMouse(
+  tabId,
+  type,
+  x,
+  y,
+  button,
+  clickCount,
+  cdp,
+  extra = {},
+) {
+  await cdp(tabId, "Input.dispatchMouseEvent", {
     type,
     x,
     y,
@@ -805,18 +1063,20 @@ async function dispatchMouse(tabId, type, x, y, button, clickCount, cdp, extra =
  * for Input.dispatchMouseEvent (which expects viewport coords, not page-absolute).
  */
 async function scrollIntoViewAndGetRect(objectId, tabId, cdp) {
-  await cdp(tabId, 'Runtime.callFunctionOn', {
+  await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
-    functionDeclaration: 'function() { this.scrollIntoView({ behavior: "instant", block: "center", inline: "center" }); }',
+    functionDeclaration:
+      'function() { this.scrollIntoView({ behavior: "instant", block: "center", inline: "center" }); }',
     returnByValue: true,
-  }).catch(() => {});
+  }).catch(console.error);
   // Brief settle after scroll so the viewport position stabilises
   await sleep(100);
-  const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+  const res = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
-    functionDeclaration: 'function() { const r = this.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }',
+    functionDeclaration:
+      "function() { const r = this.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }",
     returnByValue: true,
-  }).catch(() => null);
+  }).catch(console.error);
   return res?.result?.value ?? null;
 }
 
@@ -831,18 +1091,29 @@ async function scrollIntoViewAndGetRect(objectId, tabId, cdp) {
  *
  * Returns the fresh objectId of the live element, or null on timeout.
  */
-async function waitForOption(selectors, targetValue, tabId, contextId, cdp, timeoutMs = STEP_TIMEOUT_MS) {
+async function waitForOption(
+  selectors,
+  targetValue,
+  tabId,
+  contextId,
+  cdp,
+  timeoutMs = STEP_TIMEOUT_MS,
+) {
   const deadline = Date.now() + timeoutMs;
   let consecutiveErrors = 0;
 
   // Build a Runtime.evaluate expression using the first usable CSS selector.
   // Avoids callFunctionOn + objectId entirely — no stale-reference or `this`-binding issues.
-  const normalized = Array.isArray(selectors[0]) ? selectors : selectors.map(s => [s]);
-  const cssSel = normalized.find(c => c[0] && !c[0].includes('/') && !c[0].includes(' >>> '))?.[0];
+  const normalized = Array.isArray(selectors[0])
+    ? selectors
+    : selectors.map((s) => [s]);
+  const cssSel = normalized.find(
+    (c) => c[0] && !c[0].includes("/") && !c[0].includes(" >>> "),
+  )?.[0];
   const getEl = cssSel
-    ? (cssSel.startsWith('#')
-        ? `document.getElementById(${JSON.stringify(cssSel.slice(1))})`
-        : `document.querySelector(${JSON.stringify(cssSel)})`)
+    ? cssSel.startsWith("#")
+      ? `document.getElementById(${JSON.stringify(cssSel.slice(1))})`
+      : `document.querySelector(${JSON.stringify(cssSel)})`
     : null;
   const targetStr = JSON.stringify(String(targetValue));
 
@@ -858,10 +1129,15 @@ async function waitForOption(selectors, targetValue, tabId, contextId, cdp, time
       const params = { expression: expr, returnByValue: true };
       if (contextId) params.contextId = contextId;
 
-      const res = await cdp(tabId, 'Runtime.evaluate', params).catch(() => null);
+      const res = await cdp(tabId, "Runtime.evaluate", params).catch(
+        console.error,
+      );
       if (res === null) {
         // CDP rejected — debugger likely detached
-        if (++consecutiveErrors >= 6) throw new Error(`Debugger detached while waiting for <select> option "${targetValue}"`);
+        if (++consecutiveErrors >= 6)
+          throw new Error(
+            `Debugger detached while waiting for <select> option "${targetValue}"`,
+          );
       } else {
         consecutiveErrors = 0;
         found = res?.result?.value === true;
@@ -870,14 +1146,17 @@ async function waitForOption(selectors, targetValue, tabId, contextId, cdp, time
       // No plain CSS selector — fall back to resolveObjectId + callFunctionOn
       const freshId = await resolveObjectId(selectors, tabId, contextId, cdp);
       if (!freshId) {
-        if (++consecutiveErrors >= 6) throw new Error(`Debugger detached while waiting for <select> option "${targetValue}"`);
+        if (++consecutiveErrors >= 6)
+          throw new Error(
+            `Debugger detached while waiting for <select> option "${targetValue}"`,
+          );
       } else {
         consecutiveErrors = 0;
-        const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+        const res = await cdp(tabId, "Runtime.callFunctionOn", {
           objectId: freshId,
           functionDeclaration: `function(){ return [...(this.options||[])].some(o=>o.value===${targetStr}); }`,
           returnByValue: true,
-        }).catch(() => null);
+        }).catch(console.error);
         found = res?.result?.value === true;
       }
     }
@@ -892,5 +1171,5 @@ async function waitForOption(selectors, targetValue, tabId, contextId, cdp, time
 }
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -212,7 +212,7 @@ export async function runRecording(recording, tabId) {
     replayState.active = false;
     replayState.tabId = null;
     stopKeepalive();
-    chrome.storage.session.remove('replaySuffix').catch(() => {});
+    chrome.storage.session.remove('replaySuffix').catch(console.error);
   }
 }
 

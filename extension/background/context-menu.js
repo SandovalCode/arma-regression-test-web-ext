@@ -47,12 +47,12 @@ chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
   // is gone — fall back to session storage which survives SW restarts.
   let elInfo = contextMenu.lastEl;
   if (!elInfo) {
-    const stored = await chrome.storage.session.get('lastContextMenuEl').catch(() => ({}));
+    const stored = await chrome.storage.session.get('lastContextMenuEl').catch(console.error);
     elInfo = stored.lastContextMenuEl ?? null;
   }
   if (!elInfo) return;
   contextMenu.lastEl = null; // consume in-memory copy
-  chrome.storage.session.remove('lastContextMenuEl').catch(() => {}); // consume persisted copy
+  chrome.storage.session.remove('lastContextMenuEl').catch(console.error); // consume persisted copy
 
   if (_info.menuItemId === 'record-variable') {
     // Prompt the user for a variable name via the sidepanel dialog.
