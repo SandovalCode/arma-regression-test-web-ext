@@ -16,6 +16,120 @@
   if (window.__recorderActive) return;
   window.__recorderActive = true;
 
+  // ── Salesforce / Shadow DOM support ──────────────────────────────────────────
+
+  function isSalesforce() {
+    return /\.(force|salesforce|visualforce)\.com$/.test(location.hostname);
+  }
+
+  // Returns the deepest real event target, piercing LWC synthetic shadow boundaries.
+  // On Salesforce, uses composedPath()[0] so we get the element inside the shadow root,
+  // not the retargeted shadow host. Also walks up from SVG elements and non-interactive
+  // LWC custom elements (e.g. lightning-primitive-icon) to the nearest interactive HTML
+  // ancestor so the recorded selector is for the button, not the icon inside it.
+  function getTarget(e) {
+    const composed = e.composedPath ? e.composedPath() : [];
+    let el = (isSalesforce() && composed.length > 0 ? composed[0] : null) || e.target;
+    if (!el) return e.target;
+
+    // Bubble up when the target is an SVG element (icon-only button click) OR a
+    // non-interactive LWC custom element (tag contains "-", e.g. lightning-primitive-icon).
+    // LWC synthetic shadow patches composedPath() to stop at shadow boundaries, so
+    // composed[0] is often the LWC host element (e.g. lightning-primitive-icon), not
+    // the inner <path>/<svg> — both cases need the same upward walk.
+    const isNonInteractive = (node) => {
+      if (!node || !(node instanceof HTMLElement) && !(node instanceof SVGElement)) return false;
+      const tag = node.tagName ? node.tagName.toUpperCase() : '';
+      const role = node.getAttribute?.('role') ?? '';
+      if (tag === 'BUTTON' || tag === 'A' ||
+          role === 'button' || role === 'menuitem' || role === 'tab' || role === 'option') {
+        return false; // already interactive — do not bubble past this
+      }
+      return node instanceof SVGElement ||
+             (node.namespaceURI && node.namespaceURI.includes('svg')) ||
+             (node instanceof HTMLElement && node.tagName.includes('-')); // LWC custom element
+    };
+
+    if (isNonInteractive(el)) {
+      // 1. Walk composed path (works with native shadow DOM)
+      for (const node of composed) {
+        if (!(node instanceof HTMLElement)) continue;
+        const tag = node.tagName.toUpperCase();
+        const role = node.getAttribute?.('role') ?? '';
+        if (tag === 'BUTTON' || tag === 'A' ||
+            role === 'button' || role === 'menuitem' || role === 'tab' || role === 'option') {
+          return node;
+        }
+      }
+      // 2. LWC synthetic shadow fallback: composedPath() is cut at the shadow boundary,
+      //    but e.target is retargeted to the LWC host (e.g. lightning-primitive-icon),
+      //    which IS a real DOM child of the <button>. So closest() on e.target works.
+      const retargeted = e.target;
+      if (retargeted instanceof HTMLElement) {
+        const closest = retargeted.closest?.('button, a, [role="button"], [role="menuitem"]');
+        if (closest) return closest;
+      }
+    }
+
+    return el;
+  }
+
+  // Builds a pierce-chain selector traversing shadow DOM boundaries:
+  // e.g. "lightning-button-icon >>> button.slds-button"
+  // Each segment identifies the element within its own shadow root context.
+  function buildSegmentInRoot(el, root) {
+    const tag = el.tagName.toLowerCase();
+    const INJECTED_ATTR_PREFIXES = ['data-dashlane-', 'data-lastpass-', 'data-1p-'];
+
+    if (el.id) {
+      const sel = `#${CSS.escape(el.id)}`;
+      try { if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel; } catch (_) {}
+    }
+
+    for (const attr of el.attributes) {
+      if (!attr.name.startsWith('data-') || !attr.value) continue;
+      if (INJECTED_ATTR_PREFIXES.some(p => attr.name.startsWith(p))) continue;
+      if (attr.name === 'data-aura-rendered-by') continue; // Aura internal, not stable
+      // Skip LWC scoping attributes (lwc-xxxxxxx-host, etc.)
+      if (/^lwc-/.test(attr.name)) continue;
+      const sel = `${tag}[${attr.name}="${CSS.escape(attr.value)}"]`;
+      try { if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel; } catch (_) {}
+    }
+
+    const cls = Array.from(el.classList)
+      .filter(c => !/\b(active|focus|hover|selected|slds-is-open)\b/.test(c))
+      .slice(0, 2)
+      .map(c => `.${CSS.escape(c)}`)
+      .join('');
+    const candidate = cls ? `${tag}${cls}` : tag;
+    try { if ((root.querySelectorAll?.(candidate) ?? []).length === 1) return candidate; } catch (_) {}
+
+    const parent = el.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+      const idx = siblings.indexOf(el) + 1;
+      return siblings.length > 1 ? `${tag}:nth-of-type(${idx})` : tag;
+    }
+    return tag;
+  }
+
+  function buildShadowPierceChain(el) {
+    const segments = [];
+    let current = el;
+    while (current && current !== document.documentElement && current !== document.body) {
+      const root = current.getRootNode();
+      const segment = buildSegmentInRoot(current, root);
+      if (!segment) break;
+      segments.unshift(segment);
+      if (root instanceof ShadowRoot) {
+        current = root.host; // step out through the shadow boundary
+      } else {
+        break; // reached the document root
+      }
+    }
+    return segments.length > 1 ? segments.join(' >>> ') : null;
+  }
+
   // ── State ────────────────────────────────────────────────────────────────────
   let lastSelection = '';
   let lastSelectionEl = null;
@@ -48,6 +162,13 @@
 
   function buildCSSSelector(el) {
     if (!el || el === document.body) return null;
+    // Check uniqueness within the element's own root (ShadowRoot or document).
+    // On Salesforce, elements inside a shadow root must be scoped to that root.
+    const root = el.getRootNode();
+    const qsAll = (sel) => {
+      try { return (root.querySelectorAll?.(sel) ?? document.querySelectorAll(sel)).length; }
+      catch (_) { return 0; }
+    };
 
     // Prefer id — CSS.escape handles any id value (leading underscores, digits, etc.)
     if (el.id) return `#${CSS.escape(el.id)}`;
@@ -58,13 +179,13 @@
       if (!attr.name.startsWith('data-') || !attr.value) continue;
       if (INJECTED_ATTR_PREFIXES.some(p => attr.name.startsWith(p))) continue;
       const sel = `${el.tagName.toLowerCase()}[${attr.name}="${CSS.escape(attr.value)}"]`;
-      if (document.querySelectorAll(sel).length === 1) return sel;
+      if (qsAll(sel) === 1) return sel;
     }
 
     // name attribute (inputs, selects)
     if (el.name) {
       const sel = `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]`;
-      if (document.querySelectorAll(sel).length === 1) return sel;
+      if (qsAll(sel) === 1) return sel;
     }
 
     // type + class fallback
@@ -77,7 +198,7 @@
     const candidate = cls ? `${tag}${cls}` : tag;
 
     // Build nth-child if not unique
-    if (document.querySelectorAll(candidate).length === 1) return candidate;
+    if (qsAll(candidate) === 1) return candidate;
     return buildNthChildSelector(el);
   }
 
@@ -138,6 +259,13 @@
     if (!el || el === document || el === document.body) return [];
     const selectors = [];
 
+    // On Salesforce, pierce-chain selector has the highest priority because plain CSS
+    // selectors can't cross LWC shadow boundaries during replay.
+    if (isSalesforce()) {
+      const chain = buildShadowPierceChain(el);
+      if (chain) selectors.push([chain]);
+    }
+
     const aria = getAriaLabel(el);
     if (aria) selectors.push([`aria/${aria}`]);
 
@@ -183,7 +311,7 @@
   // ── Event Handlers ────────────────────────────────────────────────────────────
 
   function handleClick(e) {
-    const el = e.target;
+    const el = getTarget(e);
     if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
     // Clicks on <select> and <option> are captured as selectOption steps via change event
     if (el.tagName === 'SELECT' || el.tagName === 'OPTION' || el.closest('select')) return;
@@ -221,7 +349,7 @@
   }
 
   function handleDoubleClick(e) {
-    const el = e.target;
+    const el = getTarget(e);
     if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
 
     // Cancel the two pending single-click steps fired before dblclick.
@@ -395,7 +523,7 @@
   // Using a message is more reliable than window.__lastContextMenuEl because
   // a later executeScript call runs in a different execution context in MV3.
   function handleContextMenu(e) {
-    const el = e.target;
+    const el = getTarget(e);
     if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
     const rect = el.getBoundingClientRect();
 

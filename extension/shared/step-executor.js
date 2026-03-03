@@ -170,15 +170,17 @@ async function execClick(step, tabId, contextId, cdp) {
   if (step.duration) await sleep(step.duration);
   await dispatchMouse(tabId, 'mouseReleased', cx, cy, 'left', 1, cdp);
 
-  // Belt-and-suspenders: also fire synthetic JS events on the element.
-  // Salesforce LWC (and some other frameworks) register addEventListener handlers
-  // that respond to JS-dispatched events independently of the CDP hardware events.
+  // Belt-and-suspenders: fire synthetic JS events on the element so that
+  // Salesforce LWC (and other frameworks) patched event handlers also fire.
+  // NOTE: 'click' is intentionally excluded — CDP mousePressed+mouseReleased already
+  // fires a real browser click event. A second synthetic click would toggle any
+  // dropdown/toggle button closed immediately after it opens.
   if (objectId) {
     await cdp(tabId, 'Runtime.callFunctionOn', {
       objectId,
       functionDeclaration: `function() {
         const cx = ${cx}, cy = ${cy};
-        ['mousedown', 'mouseup', 'click'].forEach(type => {
+        ['mouseenter', 'mouseover', 'mousedown', 'mouseup'].forEach(type => {
           this.dispatchEvent(new MouseEvent(type, {
             view: window, bubbles: true, cancelable: true,
             clientX: cx, clientY: cy,
