@@ -12,7 +12,6 @@ import { NAV_TIMEOUT_MS, STEP_TIMEOUT_MS, POLLING_DOMAINS } from './constants.js
  * @param {Map}     variables       — Map<variableName, value> for user-defined saved variables
  */
 export async function executeStep(step, tabId, frameContextMap, clipboardVars, cdp, variables = new Map()) {
-  // Resolve the correct execution context for this step's frame
   const contextId = resolveContext(step, frameContextMap);
 
   switch (step.type) {
@@ -43,11 +42,7 @@ export async function executeStep(step, tabId, frameContextMap, clipboardVars, c
 
 function resolveContext(step, _frameContextMap) {
   if (!step.frame || step.frame.length === 0) return null;
-  // The frameContextMap is keyed by frameId strings.
-  // We can't easily map frame index arrays to frameIds here without querying
-  // Page.getFrameTree again; for now we return null and let the CDP call use
-  // the main context. Frame-specific resolution is handled in execNavigateFrame.
-  // TODO: enhance with Page.getFrameTree lookup for full iframe support.
+  // TODO: full iframe support via Page.getFrameTree lookup.
   return null;
 }
 
@@ -71,35 +66,29 @@ async function execNavigate(step, tabId, cdp) {
   const tab = await chrome.tabs.get(tabId);
 
   if (tab.status === 'loading') {
-    // tab.pendingUrl is the in-flight destination URL (more reliable than tab.url here).
+    // tab.pendingUrl is the in-flight destination (more reliable than tab.url here).
     const pendingUrl = tab.pendingUrl || tab.url || '';
     if (normalizeUrl(pendingUrl) === normalizeUrl(targetUrl)) {
-      // Already loading to the right URL — just wait for it.
       await waitForNavigation(tabId, NAV_TIMEOUT_MS);
       await sleep(600);
       return;
     }
-    // Loading to a DIFFERENT URL (e.g. a click-triggered navigation going somewhere else).
-    // Wait for it to settle, then fall through to navigate explicitly to our target.
+    // Loading to a different URL — wait for it to settle, then check again.
     await waitForNavigation(tabId, NAV_TIMEOUT_MS);
-    // Re-check after the load completed
     const settled = await chrome.tabs.get(tabId);
     if (normalizeUrl(settled.url ?? '') === normalizeUrl(targetUrl)) {
       await sleep(600);
       return;
     }
   } else if (normalizeUrl(tab.url ?? '') === normalizeUrl(targetUrl)) {
-    // Already at the target URL and fully loaded — nothing to do.
     await sleep(300);
     return;
   }
 
-  // Explicit navigation to the target URL.
   const navPromise = waitForNavigation(tabId, NAV_TIMEOUT_MS);
   await cdp(tabId, 'Page.navigate', { url: targetUrl });
   await navPromise;
-  // Longer settle: give JS frameworks (React, Angular, Vue) time to boot after load.
-  await sleep(600);
+  await sleep(600); // give JS frameworks time to boot
 }
 
 function normalizeUrl(url) {
@@ -151,7 +140,6 @@ async function execClick(step, tabId, contextId, cdp) {
     }
   }
   if (cx == null) {
-    // Fall back to resolveSelector if objectId resolution failed
     const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
     cx = x + (step.offsetX ?? 0);
     cy = y + (step.offsetY ?? 0);
@@ -257,11 +245,9 @@ async function execHover(step, tabId, contextId, cdp) {
 async function execChange(step, tabId, contextId, cdp) {
   const value = step.value ?? '';
 
-  // We need the objectId to call functions on the element
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId) throw new Error(`Could not resolve element for change step. Tried: ${JSON.stringify(step.selectors)}`);
 
-  // Determine if it's a <select>
   const tagRes = await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: 'function() { return this.tagName; }',
@@ -278,7 +264,6 @@ async function execChange(step, tabId, contextId, cdp) {
     // replacement don't hang the loop. Returns the fresh live objectId.
     const readyId = await waitForOption(step.selectors, value, tabId, contextId, cdp) ?? objectId;
 
-    // Scroll into view and get coords for CDP mouseenter.
     let cx, cy;
     const selectBox = await scrollIntoViewAndGetRect(readyId, tabId, cdp);
     if (selectBox) {
@@ -308,7 +293,6 @@ async function execChange(step, tabId, contextId, cdp) {
       returnByValue: true,
     });
   } else {
-    // For text inputs: insert full text then fire events
     await cdp(tabId, 'Runtime.callFunctionOn', {
       objectId,
       functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
@@ -454,8 +438,7 @@ async function findVisibleOptionCoords(labelText, value, tabId, contextId, cdp) 
 }
 
 // ── Autocomplete option picker ──────────────────────────────────────────────────
-// After typing into an autocomplete field, find the visible option whose text
-// matches `targetText` exactly and click it.  Falls back to partial match.
+
 async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
   const result = await cdp(tabId, 'Runtime.evaluate', {
     expression: `
@@ -472,25 +455,19 @@ async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
           'div[class*="dropdown"] *',
         ];
 
-        // Collect all visible candidate elements
         const seen = new Set();
         const candidates = [];
         for (const sel of selectors) {
           for (const el of document.querySelectorAll(sel)) {
-            if (!seen.has(el)) {
-              seen.add(el);
-              candidates.push(el);
-            }
+            if (!seen.has(el)) { seen.add(el); candidates.push(el); }
           }
         }
 
-        // Exact match first, then partial
         for (const pass of ['exact', 'partial']) {
           for (const el of candidates) {
             const text = (el.textContent ?? el.getAttribute('value') ?? '').trim();
             const matches = pass === 'exact' ? text === target : text.toLowerCase().includes(target.toLowerCase());
             if (!matches) continue;
-            // Must be visible
             const rect = el.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) continue;
             if (el.offsetParent === null) continue;
@@ -583,7 +560,6 @@ async function execWaitForPageLoad(tabId, cdp) {
 // ── scroll ─────────────────────────────────────────────────────────────────────
 
 async function execScroll(step, tabId, contextId, cdp) {
-  // If selectors provided, scroll to the element first
   if (step.selectors?.length) {
     try {
       const { x, y } = await resolveSelector(step.selectors, tabId, contextId, cdp);
@@ -594,7 +570,6 @@ async function execScroll(step, tabId, contextId, cdp) {
       return;
     } catch (_) {}
   }
-  // Fallback: scroll the page
   await cdp(tabId, 'Runtime.evaluate', {
     expression: `window.scrollBy(${step.x ?? 0}, ${step.y ?? 0})`,
   });
@@ -638,7 +613,6 @@ async function execPasteVariableAtRecording(step, tabId, contextId, clipboardVar
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
 
-  // Focus, clear, insert text
   await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
@@ -647,7 +621,6 @@ async function execPasteVariableAtRecording(step, tabId, contextId, clipboardVar
 
   await cdp(tabId, 'Input.insertText', { text: textToPaste });
 
-  // Fire reactivity events
   await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `function(v) {
@@ -700,7 +673,6 @@ async function execPasteVariableAtReplaying(step, tabId, contextId, cdp, variabl
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
 
-  // Focus, clear, insert text
   await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: 'function() { this.focus(); this.select(); this.value = ""; }',
@@ -709,7 +681,6 @@ async function execPasteVariableAtReplaying(step, tabId, contextId, cdp, variabl
 
   await cdp(tabId, 'Input.insertText', { text: textToPaste });
 
-  // Fire reactivity events
   await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `function(v) {
@@ -877,8 +848,6 @@ async function waitForOption(selectors, targetValue, tabId, contextId, cdp, time
     let found = false;
 
     if (getEl) {
-      // Use Runtime.evaluate: the expression runs in the page's JS context without
-      // any objectId binding, so there are no stale-reference exceptions.
       const expr = `(function(){
         const el=${getEl};
         if (!el) return false;
@@ -912,9 +881,7 @@ async function waitForOption(selectors, targetValue, tabId, contextId, cdp, time
     }
 
     if (found) {
-      // Re-resolve a fresh objectId now that the option exists
-      const readyId = await resolveObjectId(selectors, tabId, contextId, cdp);
-      return readyId;
+      return await resolveObjectId(selectors, tabId, contextId, cdp);
     }
 
     await sleep(500);
