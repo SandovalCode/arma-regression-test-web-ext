@@ -23,6 +23,13 @@ export async function runRecording(recording, tabId) {
   await new Promise(r => setTimeout(r, 300));
 
   const runId = crypto.randomUUID();
+  // Generate a short unique suffix for variable keys in this run.
+  // This guarantees that values stored by copyVariable steps in this run
+  // cannot be confused with stale values from a previous run.
+  const replaySuffix = runId.slice(0, 3);
+  variables.set('__replaySuffix__', replaySuffix);
+  await chrome.storage.session.set({ replaySuffix });
+
   const startedAt = new Date().toISOString();
   const stepResults = [];
 
@@ -205,6 +212,7 @@ export async function runRecording(recording, tabId) {
     replayState.active = false;
     replayState.tabId = null;
     stopKeepalive();
+    chrome.storage.session.remove('replaySuffix').catch(() => {});
   }
 }
 

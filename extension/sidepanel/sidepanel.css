@@ -368,6 +368,7 @@ input[type="text"]::placeholder { color: var(--muted); }
 .step-item.passed  { color: var(--green); }
 .step-item.failed  { color: var(--red); background: rgba(239,68,68,0.08); }
 
+.step-num  { min-width: 20px; text-align: right; font-size: 10px; color: var(--muted); flex-shrink: 0; opacity: 0.6; }
 .step-icon { width: 14px; text-align: center; flex-shrink: 0; }
 .step-label { flex: 1; }
 .step-detail { color: var(--muted); font-size: 11px; margin-left: 4px; word-break: break-all; }

@@ -135,7 +135,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (recordingState.active && payload.step) {
           const step = payload.step;
 
-          // Track saveVariable snapshots so later steps can reference them as {{varName}}
+          // Track copyVariable snapshots for text/ selector filtering on subsequent steps.
+          // defaultValue/fallbackValue are kept in the step only for recording-time visual
+          // feedback — they are volatile and NEVER used as fallbacks at replay time.
           if (step.type === 'saveVariable' && step.variableName && step.defaultValue) {
             recordingVarSnapshots.set(step.variableName, step.defaultValue);
           }
@@ -154,8 +156,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
           recordingState.steps.push(step);
 
-          // For pasteVariable: also fill the target field immediately during recording
-          // so the user gets visual feedback that the value was inserted.
+          // For pasteVariable: fill the target field with the recording-time value so the
+          // user gets visual feedback during recording. At replay time the live value is used.
           if (step.type === 'pasteVariable' && step.fallbackValue && step.selectors?.length) {
             chrome.scripting.executeScript({
               target: { tabId: recordingState.tabId },

@@ -174,6 +174,7 @@ function addOrUpdateStep({ stepIndex, total, status, stepType, stepDetail, durat
 
   li.className = `step-item ${status}`;
   li.innerHTML = `
+    <span class="step-num">${stepIndex + 1}</span>
     <span class="step-icon">${icons[status] ?? '·'}</span>
     <span class="step-label">${stepType ?? ''}${stepDetail ? `<span class="step-detail"> ${escapeHtml(stepDetail)}</span>` : ''}</span>
     <span class="step-duration">${dur}</span>

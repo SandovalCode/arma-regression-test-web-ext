@@ -273,13 +273,37 @@ async function execChange(step, tabId, contextId, cdp) {
   const isSelectStep = tagName === 'SELECT' || step.label !== undefined;
 
   if (isSelectStep) {
-    // Set the value on the select. Fire change without bubbling so parent form
-    // handlers (which could cause unwanted navigation) are not triggered.
+    // Wait for the target option to exist — selects may load options via AJAX
+    // (e.g. serv_id). Re-resolves on each poll so stale objectIds after a DOM
+    // replacement don't hang the loop. Returns the fresh live objectId.
+    const readyId = await waitForOption(step.selectors, value, tabId, contextId, cdp) ?? objectId;
+
+    // Scroll into view and get coords for CDP mouseenter.
+    let cx, cy;
+    const selectBox = await scrollIntoViewAndGetRect(readyId, tabId, cdp);
+    if (selectBox) {
+      cx = selectBox.x + selectBox.width / 2;
+      cy = selectBox.y + selectBox.height / 2;
+    }
+
+    // 1. mouseenter via CDP (mouseMoved does NOT open the OS-level dropdown)
+    if (cx != null) {
+      await dispatchMouse(tabId, 'mouseMoved', cx, cy, 'none', 0, cdp);
+      await sleep(80);
+    }
+
+    // 2. click (synthetic JS) → 3. focus → 4. value → 5. change → 6. blur
+    // Synthetic MouseEvent fires click listeners without opening the OS dropdown,
+    // which would block subsequent JS for plain native selects (e.g. serv_id).
     await cdp(tabId, 'Runtime.callFunctionOn', {
-      objectId,
+      objectId: readyId,
       functionDeclaration: `function() {
+        this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        this.focus();
         this.value = ${JSON.stringify(value)};
-        this.dispatchEvent(new Event('change', { bubbles: false, cancelable: true }));
+        this.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        this.dispatchEvent(new Event('blur',   { bubbles: true }));
+        this.blur();
       }`,
       returnByValue: true,
     });
@@ -310,19 +334,138 @@ async function execChange(step, tabId, contextId, cdp) {
 }
 
 // ── selectOption ───────────────────────────────────────────────────────────────
+//
+// Treat <select> as a plain HTML form field — no mouse simulation needed.
+//
+//  1. Short poll (3s) for cascading-AJAX selects: if a previous step's change
+//     event triggered an AJAX load, the options may already be arriving.
+//  2. Custom dropdown libraries (Select2, Chosen…) render their own DOM —
+//     click the visible option element directly.
+//  3. Native select: inject the option into the DOM if it is still missing,
+//     set select.value, fire change + blur. That is all a form cares about.
+//     No mouse events — they are not needed for form-field value assignment
+//     and can interfere with page navigation on some sites.
 
 async function execSelectOption(step, tabId, contextId, cdp) {
-  const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-  if (!objectId) throw new Error(`selectOption: could not find select. Tried: ${JSON.stringify(step.selectors)}`);
+  // Build a selector list that puts "select[...]" CSS selectors FIRST.
+  // Plain #id selectors can match a hidden <input id="serv_id"> instead of
+  // the actual <select name="serv_id">, causing "options is not iterable".
+  const normalized = Array.isArray(step.selectors[0])
+    ? step.selectors
+    : step.selectors.map(s => [s]);
+  const selectFirst = [
+    ...normalized.filter(c => (c[0] ?? '').startsWith('select')),
+    ...normalized.filter(c => !(c[0] ?? '').startsWith('select')),
+  ];
 
-  await cdp(tabId, 'Runtime.callFunctionOn', {
+  // 1. Give cascading-AJAX a short window to populate the select naturally.
+  await waitForOption(selectFirst, step.value, tabId, contextId, cdp, 3000);
+
+  // Re-resolve after the wait — AJAX may have replaced the DOM node.
+  const objectId = await resolveObjectId(selectFirst, tabId, contextId, cdp);
+  if (!objectId) throw new Error(`selectOption: could not find select. Tried: ${JSON.stringify(selectFirst)}`);
+
+  // Scroll into view so the element is reachable.
+  await scrollIntoViewAndGetRect(objectId, tabId, cdp);
+
+  // 2. Custom dropdown: if a library rendered visible option elements, click one.
+  const label = step.label ?? step.value;
+  const optCoords = await findVisibleOptionCoords(label, step.value, tabId, contextId, cdp);
+  if (optCoords) {
+    await dispatchMouse(tabId, 'mouseMoved',    optCoords.x, optCoords.y, 'none', 0, cdp);
+    await sleep(50);
+    await dispatchMouse(tabId, 'mousePressed',  optCoords.x, optCoords.y, 'left', 1, cdp);
+    await dispatchMouse(tabId, 'mouseReleased', optCoords.x, optCoords.y, 'left', 1, cdp);
+    return;
+  }
+
+  // 3. Native select — pure form-field approach.
+  //
+  //    Problem: AJAX triggered by other steps can replace the options list at
+  //    any time, resetting the select back to a default value (e.g. "10").
+  //    Solution: set the value immediately AND register a capture-phase submit
+  //    listener on the form that re-applies the value right before submission —
+  //    no AJAX running after the button click can undo this.
+  console.log(`[selectOption] setting value="${step.value}" label="${label}" selector="${selectFirst?.[0]?.[0]}"`);
+  const setRes = await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `function() {
-      this.value = ${JSON.stringify(step.value)};
-      this.dispatchEvent(new Event('change', { bubbles: false, cancelable: true }));
+      const v = ${JSON.stringify(step.value)};
+      const l = ${JSON.stringify(label)};
+      const sel = this;
+
+      function applyValue() {
+        if (![...sel.options].some(o => o.value === v)) {
+          console.log('[selectOption] (re)injecting option value=' + v);
+          sel.add(new Option(l, v, true, true));
+        }
+        sel.value = v;
+        console.log('[selectOption] applied value=' + sel.value + ' name=' + sel.name);
+      }
+
+      const before = sel.value;
+      applyValue();
+      const after = sel.value;
+
+      // Register a capture-phase submit handler so the value is guaranteed
+      // correct at the moment the browser serializes form data, even if AJAX
+      // resets the select between now and the Submit click.
+      const form = sel.form || sel.closest('form');
+      if (form && !form.__botSelectHandlers) form.__botSelectHandlers = {};
+      if (form && !form.__botSelectHandlers[sel.name]) {
+        form.__botSelectHandlers[sel.name] = applyValue;
+        form.addEventListener('submit', applyValue, true);
+        console.log('[selectOption] registered submit listener for name=' + sel.name);
+      }
+
+      return { before, after, name: sel.name };
     }`,
     returnByValue: true,
   });
+  if (setRes?.exceptionDetails) {
+    console.warn(`[selectOption] JS exception in callFunctionOn:`, JSON.stringify(setRes.exceptionDetails));
+  }
+  console.log(`[selectOption] result:`, JSON.stringify(setRes?.result?.value));
+}
+
+/**
+ * After a dropdown is opened, scan the DOM for a visible element whose text
+ * matches the option label (or whose data-value matches the option value).
+ * Works for Select2, Chosen, Tom-Select, and other custom dropdown libraries.
+ * Returns { x, y } viewport coordinates to click, or null for native selects.
+ */
+async function findVisibleOptionCoords(labelText, value, tabId, contextId, cdp) {
+  const expr = `
+    (function() {
+      const label = ${JSON.stringify(String(labelText))};
+      const val   = ${JSON.stringify(String(value))};
+      const SELECTORS = [
+        '[role="option"]',
+        '[role="listbox"] li', '[role="listbox"] div',
+        '.select2-results__option',
+        '.chosen-results .active-result',
+        '.ts-dropdown .option',
+        'ul[class*="dropdown"] li',
+        'div[class*="dropdown"] [class*="item"]',
+        'li[class*="option"]',
+        'div[class*="option"]',
+      ];
+      for (const sel of SELECTORS) {
+        for (const el of document.querySelectorAll(sel)) {
+          const text = (el.textContent || '').trim();
+          if (text !== label && el.dataset?.value !== val) continue;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }
+      }
+      return null;
+    })()
+  `;
+  const params = { expression: expr, returnByValue: true };
+  if (contextId) params.contextId = contextId;
+  const res = await cdp(tabId, 'Runtime.evaluate', params).catch(() => null);
+  return res?.result?.value ?? null;
 }
 
 // ── Autocomplete option picker ──────────────────────────────────────────────────
@@ -532,12 +675,12 @@ async function execPasteVariableAtRecording(step, tabId, contextId, clipboardVar
   });
 }
 
-// ── saveVariable ───────────────────────────────────────────────────────────────
+// ── copyVariable (captures live value at replay time) ──────────────────────────
 
 async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variables) {
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
-  console.log(`[SaveVariable] var="${step.variableName}" objectId=${objectId ? 'found' : 'NOT FOUND'} selectors=`, JSON.stringify(step.selectors));
-  if (!objectId) throw new Error(`saveVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`);
+  console.log(`[CopyVariable] var="${step.variableName}" objectId=${objectId ? 'found' : 'NOT FOUND'} selectors=`, JSON.stringify(step.selectors));
+  if (!objectId) throw new Error(`copyVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`);
 
   const res = await cdp(tabId, 'Runtime.callFunctionOn', {
     objectId,
@@ -551,17 +694,23 @@ async function execCopyVariableAtReplaying(step, tabId, contextId, cdp, variable
   });
 
   const value = res?.result?.value;
-  console.log(`[SaveVariable] var="${step.variableName}" captured="${value}"`);
-  if (!value) throw new Error(`saveVariable: element found but value is empty for variable "${step.variableName}"`);
+  console.log(`[CopyVariable] var="${step.variableName}" captured="${value}"`);
+  if (!value) throw new Error(`copyVariable: element found but value is empty for variable "${step.variableName}"`);
 
-  variables.set(step.variableName, value);
+  const suffix = variables.get('__replaySuffix__') ?? '';
+  const varKey = suffix ? `${step.variableName}-${suffix}` : step.variableName;
+  variables.set(varKey, value);
+  console.log(`[CopyVariable] stored as key="${varKey}"`);
 }
 
-// ── pasteVariable ──────────────────────────────────────────────────────────────
+// ── pasteVariable (uses value copied at replay time) ───────────────────────────
 
 async function execPasteVariableAtReplaying(step, tabId, contextId, cdp, variables) {
-  const textToPaste = variables.get(step.variableName);
-  if (!textToPaste) throw new Error(`pasteVariable: no runtime value found for variable "${step.variableName}" — make sure a saveVariable step ran before this`);
+  const suffix = variables.get('__replaySuffix__') ?? '';
+  const varKey = suffix ? `${step.variableName}-${suffix}` : step.variableName;
+  const textToPaste = variables.get(varKey);
+  console.log(`[PasteVariable] var="${step.variableName}" key="${varKey}" value="${textToPaste}"`);
+  if (!textToPaste) throw new Error(`pasteVariable: no runtime value found for key "${varKey}" — make sure a copyVariable step ran before this`);
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId) throw new Error(`Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`);
@@ -711,6 +860,95 @@ async function scrollIntoViewAndGetRect(objectId, tabId, cdp) {
     returnByValue: true,
   }).catch(() => null);
   return res?.result?.value ?? null;
+}
+
+/**
+ * Polls until the <select> has an <option> matching targetValue, or until
+ * STEP_TIMEOUT_MS elapses.
+ *
+ * Re-resolves the element on every iteration — the DOM node is often replaced
+ * when AJAX loads the options, making the original objectId stale. Calling
+ * Runtime.callFunctionOn on a detached node fails silently (returns null),
+ * which would cause an infinite wait if we reused the original id.
+ *
+ * Returns the fresh objectId of the live element, or null on timeout.
+ */
+async function waitForOption(selectors, targetValue, tabId, contextId, cdp, timeoutMs = STEP_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  let consecutiveErrors = 0;
+
+  // Build a Runtime.evaluate expression using the first usable CSS selector.
+  // Avoids callFunctionOn + objectId entirely — no stale-reference or `this`-binding issues.
+  const normalized = Array.isArray(selectors[0]) ? selectors : selectors.map(s => [s]);
+  const cssSel = normalized.find(c => c[0] && !c[0].includes('/') && !c[0].includes(' >>> '))?.[0];
+  const getEl = cssSel
+    ? (cssSel.startsWith('#')
+        ? `document.getElementById(${JSON.stringify(cssSel.slice(1))})`
+        : `document.querySelector(${JSON.stringify(cssSel)})`)
+    : null;
+  const targetStr = JSON.stringify(String(targetValue));
+
+  while (Date.now() < deadline) {
+    let found = false;
+
+    if (getEl) {
+      // Use Runtime.evaluate: the expression runs in the page's JS context without
+      // any objectId binding, so there are no stale-reference exceptions.
+      const expr = `(function(){
+        const el=${getEl};
+        if (!el) return { found: false, optCount: -1, sample: [] };
+        const opts = [...(el.options || [])];
+        return {
+          found: opts.some(o => o.value === ${targetStr}),
+          optCount: opts.length,
+          sample: opts.slice(0, 5).map(o => ({ v: o.value, t: o.text })),
+        };
+      })()`;
+      const params = { expression: expr, returnByValue: true };
+      if (contextId) params.contextId = contextId;
+
+      const res = await cdp(tabId, 'Runtime.evaluate', params).catch(() => null);
+      if (res === null) {
+        // CDP rejected — debugger likely detached
+        if (++consecutiveErrors >= 6) throw new Error(`Debugger detached while waiting for <select> option "${targetValue}"`);
+        console.warn(`[waitForOption] CDP error consecutiveErrors=${consecutiveErrors}`);
+      } else {
+        consecutiveErrors = 0;
+        const val = res?.result?.value;
+        found = val?.found === true;
+        console.log(`[waitForOption] poll → found=${found} optCount=${val?.optCount} sample=${JSON.stringify(val?.sample)} target=${targetStr} exception=${!!res?.exceptionDetails}`);
+      }
+    } else {
+      // No plain CSS selector — fall back to resolveObjectId + callFunctionOn
+      const freshId = await resolveObjectId(selectors, tabId, contextId, cdp);
+      if (!freshId) {
+        if (++consecutiveErrors >= 6) throw new Error(`Debugger detached while waiting for <select> option "${targetValue}"`);
+        console.warn(`[waitForOption] fallback: resolveObjectId failed consecutiveErrors=${consecutiveErrors}`);
+      } else {
+        consecutiveErrors = 0;
+        const res = await cdp(tabId, 'Runtime.callFunctionOn', {
+          objectId: freshId,
+          functionDeclaration: `function(){
+            const opts=[...(this.options||[])];
+            return{found:opts.some(o=>o.value===${targetStr}),optCount:opts.length,sample:opts.slice(0,5).map(o=>({v:o.value,t:o.text}))};
+          }`,
+          returnByValue: true,
+        }).catch(() => null);
+        const val = res?.result?.value;
+        found = val?.found === true;
+        console.log(`[waitForOption] fallback poll → found=${found} optCount=${val?.optCount} sample=${JSON.stringify(val?.sample)} target=${targetStr}`);
+      }
+    }
+
+    if (found) {
+      // Re-resolve a fresh objectId now that the option exists
+      const readyId = await resolveObjectId(selectors, tabId, contextId, cdp);
+      return readyId;
+    }
+
+    await sleep(500);
+  }
+  return null;
 }
 
 function sleep(ms) {
