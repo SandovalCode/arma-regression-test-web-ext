@@ -10,15 +10,21 @@ export function broadcast(type, payload = {}) {
 
 // ── Step detail for progress display ──────────────────────────────────────────
 export function getStepDetail(step) {
-  const sel = step.selectors?.flat?.().find(Boolean) ?? '';
+  const sel = step.selectors?.flat?.().find(Boolean) ?? "";
   switch (step.type) {
-    case 'navigate':    return step.url ?? '';
-    case 'click':
-    case 'doubleClick':
-    case 'hover':       return sel;
-    case 'selectOption': return `${sel} → "${step.label ?? step.value}"`;
-    case 'change':      return `${sel}${step.value ? ` → "${step.value}"` : ''}`;
-    case 'waitForElement': return sel;
-    default:            return sel;
+    case "navigate":
+      return step.url ?? "";
+    case "click":
+    case "doubleClick":
+    case "hover":
+      return sel;
+    case "selectOption":
+      return `${sel} → "${step.label ?? step.value}"`;
+    case "change":
+      return `${sel}${step.value ? ` → "${step.value}"` : ""}`;
+    case "waitForElement":
+      return sel;
+    default:
+      return sel;
   }
 }

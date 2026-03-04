@@ -5,7 +5,7 @@ let state = {
   mode: RecordingState.IDLE, // 'idle' | 'recording' | 'replaying'
   recordingStepCount: 0,
   currentRunSteps: [],
-  recordings: [],
+  recordings: []
 };
 
 let editingRecording = null; // { id, title, steps, createdAt }
@@ -101,7 +101,7 @@ function formatDate(isoStr) {
   if (!isoStr) return "";
   return new Date(isoStr).toLocaleDateString("en", {
     day: "2-digit",
-    month: "short",
+    month: "short"
   });
 }
 
@@ -169,7 +169,7 @@ function addOrUpdateStep({
   stepDetail,
   durationMs,
   error,
-  countdown,
+  countdown
 }) {
   // update progress bar
   const pct = total > 0 ? Math.round(((stepIndex + 1) / total) * 100) : 0;
@@ -250,9 +250,9 @@ const STEP_ICONS = {
   scroll: "📜",
   waitForElement: "⏳",
   setViewport: "🖥️",
-  saveVariable: "📌",
+  copyVariable: "📌",
   pasteVariable: "📋",
-  wait: "⏱️",
+  wait: "⏱️"
 };
 
 function stepLabel(step) {
@@ -270,24 +270,24 @@ function stepLabel(step) {
     case "doubleClick":
       return {
         main: step.type === "doubleClick" ? "Double click" : "Click",
-        sub: selectorHint,
+        sub: selectorHint
       };
     case "hover":
       return { main: "Hover", sub: selectorHint };
     case "selectOption":
       return {
         main: "Select",
-        sub: `"${String(step.label ?? step.value ?? "").slice(0, 30)}"`,
+        sub: `"${String(step.label ?? step.value ?? "").slice(0, 30)}"`
       };
     case "change":
       return {
         main: "Type",
-        sub: `"${String(step.value ?? "").slice(0, 30)}"`,
+        sub: `"${String(step.value ?? "").slice(0, 30)}"`
       };
     case "navigate":
       return {
         main: "Navigate",
-        sub: (step.url ?? "").replace(/^https?:\/\//, "").slice(0, 40),
+        sub: (step.url ?? "").replace(/^https?:\/\//, "").slice(0, 40)
       };
     case "keyDown":
       return { main: `Key ↓ ${step.key}`, sub: "" };
@@ -296,7 +296,7 @@ function stepLabel(step) {
     case "copy":
       return {
         main: "Copy",
-        sub: `"${String(step.snapshotValue ?? "").slice(0, 30)}"`,
+        sub: `"${String(step.snapshotValue ?? "").slice(0, 30)}"`
       };
     case "paste":
       return { main: "Paste", sub: selectorHint };
@@ -306,10 +306,10 @@ function stepLabel(step) {
       return { main: "Wait for element", sub: selectorHint };
     case "setViewport":
       return { main: `Viewport ${step.width}×${step.height}`, sub: "" };
-    case "saveVariable":
+    case "copyVariable":
       return {
-        main: `Save "${step.variableName}"`,
-        sub: String(step.defaultValue ?? "").slice(0, 30),
+        main: `Copy "${step.variableName}"`,
+        sub: String(step.defaultValue ?? "").slice(0, 30)
       };
     case "pasteVariable":
       return { main: `Paste "${step.variableName}"`, sub: selectorHint };
@@ -657,7 +657,7 @@ chrome.runtime.onMessage.addListener((msg) => {
             `<li class="batch-item">
           <span>${r.passed ? "✅" : "❌"}</span>
           <span>${escapeHtml(r.title)}</span>
-        </li>`,
+        </li>`
         )
         .join("");
       batchSection.classList.remove("hidden");
@@ -681,7 +681,7 @@ chrome.runtime.onMessage.addListener((msg) => {
       pasteVarSelect.innerHTML = vars
         .map(
           (v) =>
-            `<option value="${escapeHtml(v.name)}" data-default="${escapeHtml(v.defaultValue ?? "")}">${escapeHtml(v.name)}</option>`,
+            `<option value="${escapeHtml(v.name)}" data-default="${escapeHtml(v.defaultValue ?? "")}">${escapeHtml(v.name)}</option>`
         )
         .join("");
       pasteVarSelect.classList.toggle("hidden", vars.length === 0);
@@ -709,14 +709,14 @@ btnVarSave.addEventListener("click", async () => {
   }
 
   const step = {
-    type: "saveVariable",
+    type: "copyVariable",
     target: "main",
     variableName: name,
     defaultValue: varValueInput.value,
     selectors: pendingVariableStep?.selectors ?? [],
     ...(pendingVariableStep?.frame?.length
       ? { frame: pendingVariableStep.frame }
-      : {}),
+      : {})
   };
 
   await send(MSG.ADD_RECORDING_STEP, { step });
@@ -757,7 +757,7 @@ btnPasteVarSave.addEventListener("click", async () => {
     selectors: pendingPasteVariableStep?.selectors ?? [],
     ...(pendingPasteVariableStep?.frame?.length
       ? { frame: pendingPasteVariableStep.frame }
-      : {}),
+      : {})
   };
 
   await send(MSG.ADD_RECORDING_STEP, { step });
@@ -787,7 +787,7 @@ btnWaitSave.addEventListener("click", async () => {
   const step = {
     type: "wait",
     target: "main",
-    duration: Math.round(seconds * 1000),
+    duration: Math.round(seconds * 1000)
   };
 
   await send(MSG.ADD_RECORDING_STEP, { step });
@@ -851,7 +851,7 @@ btnEditSave.addEventListener("click", async () => {
     id: editingRecording.id,
     title: editingRecording.title,
     steps: editingRecording.steps,
-    createdAt: editingRecording.createdAt,
+    createdAt: editingRecording.createdAt
   });
   editOverlay.classList.add("hidden");
   editingRecording = null;
@@ -881,7 +881,7 @@ async function loadRecordings() {
 
   const enriched = (recordings ?? []).map((r) => ({
     ...r,
-    lastRun: histMap[r.id] ?? null,
+    lastRun: histMap[r.id] ?? null
   }));
   renderRecordings(enriched);
 }

@@ -1,0 +1,11 @@
+{
+  "name": "luis-replay-test",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "prettier": "prettier --write \"**/*.{css,html,js,jsx,ts,tsx,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  }
+}

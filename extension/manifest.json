@@ -17,9 +17,7 @@
     "contextMenus"
   ],
 
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "host_permissions": ["<all_urls>"],
 
   "background": {
     "service_worker": "background/service-worker.js",

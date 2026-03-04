@@ -10,7 +10,11 @@
   // Don't run inside chrome:// or chrome-extension:// frames (e.g. iframes from other extensions).
   // Injecting there would cause "Cannot access a chrome-extension:// URL of different extension"
   // when the content script tries to sendMessage back to the service worker.
-  if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
+  if (
+    location.protocol === "chrome-extension:" ||
+    location.protocol === "chrome:"
+  )
+    return;
 
   // Prevent double-injection on the same page
   if (window.__recorderActive) return;
@@ -29,7 +33,8 @@
   // ancestor so the recorded selector is for the button, not the icon inside it.
   function getTarget(e) {
     const composed = e.composedPath ? e.composedPath() : [];
-    let el = (isSalesforce() && composed.length > 0 ? composed[0] : null) || e.target;
+    let el =
+      (isSalesforce() && composed.length > 0 ? composed[0] : null) || e.target;
     if (!el) return e.target;
 
     // Bubble up when the target is an SVG element (icon-only button click) OR a
@@ -38,16 +43,28 @@
     // composed[0] is often the LWC host element (e.g. lightning-primitive-icon), not
     // the inner <path>/<svg> — both cases need the same upward walk.
     const isNonInteractive = (node) => {
-      if (!node || !(node instanceof HTMLElement) && !(node instanceof SVGElement)) return false;
-      const tag = node.tagName ? node.tagName.toUpperCase() : '';
-      const role = node.getAttribute?.('role') ?? '';
-      if (tag === 'BUTTON' || tag === 'A' ||
-          role === 'button' || role === 'menuitem' || role === 'tab' || role === 'option') {
+      if (
+        !node ||
+        (!(node instanceof HTMLElement) && !(node instanceof SVGElement))
+      )
+        return false;
+      const tag = node.tagName ? node.tagName.toUpperCase() : "";
+      const role = node.getAttribute?.("role") ?? "";
+      if (
+        tag === "BUTTON" ||
+        tag === "A" ||
+        role === "button" ||
+        role === "menuitem" ||
+        role === "tab" ||
+        role === "option"
+      ) {
         return false; // already interactive — do not bubble past this
       }
-      return node instanceof SVGElement ||
-             (node.namespaceURI && node.namespaceURI.includes('svg')) ||
-             (node instanceof HTMLElement && node.tagName.includes('-')); // LWC custom element
+      return (
+        node instanceof SVGElement ||
+        (node.namespaceURI && node.namespaceURI.includes("svg")) ||
+        (node instanceof HTMLElement && node.tagName.includes("-"))
+      ); // LWC custom element
     };
 
     if (isNonInteractive(el)) {
@@ -55,9 +72,15 @@
       for (const node of composed) {
         if (!(node instanceof HTMLElement)) continue;
         const tag = node.tagName.toUpperCase();
-        const role = node.getAttribute?.('role') ?? '';
-        if (tag === 'BUTTON' || tag === 'A' ||
-            role === 'button' || role === 'menuitem' || role === 'tab' || role === 'option') {
+        const role = node.getAttribute?.("role") ?? "";
+        if (
+          tag === "BUTTON" ||
+          tag === "A" ||
+          role === "button" ||
+          role === "menuitem" ||
+          role === "tab" ||
+          role === "option"
+        ) {
           return node;
         }
       }
@@ -66,7 +89,9 @@
       //    which IS a real DOM child of the <button>. So closest() on e.target works.
       const retargeted = e.target;
       if (retargeted instanceof HTMLElement) {
-        const closest = retargeted.closest?.('button, a, [role="button"], [role="menuitem"]');
+        const closest = retargeted.closest?.(
+          'button, a, [role="button"], [role="menuitem"]'
+        );
         if (closest) return closest;
       }
     }
@@ -79,34 +104,47 @@
   // Each segment identifies the element within its own shadow root context.
   function buildSegmentInRoot(el, root) {
     const tag = el.tagName.toLowerCase();
-    const INJECTED_ATTR_PREFIXES = ['data-dashlane-', 'data-lastpass-', 'data-1p-'];
+    const INJECTED_ATTR_PREFIXES = [
+      "data-dashlane-",
+      "data-lastpass-",
+      "data-1p-"
+    ];
 
     if (el.id) {
       const sel = `#${CSS.escape(el.id)}`;
-      try { if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel; } catch (_) {}
+      try {
+        if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel;
+      } catch (_) {}
     }
 
     for (const attr of el.attributes) {
-      if (!attr.name.startsWith('data-') || !attr.value) continue;
-      if (INJECTED_ATTR_PREFIXES.some(p => attr.name.startsWith(p))) continue;
-      if (attr.name === 'data-aura-rendered-by') continue; // Aura internal, not stable
+      if (!attr.name.startsWith("data-") || !attr.value) continue;
+      if (INJECTED_ATTR_PREFIXES.some((p) => attr.name.startsWith(p))) continue;
+      if (attr.name === "data-aura-rendered-by") continue; // Aura internal, not stable
       // Skip LWC scoping attributes (lwc-xxxxxxx-host, etc.)
       if (/^lwc-/.test(attr.name)) continue;
       const sel = `${tag}[${attr.name}="${CSS.escape(attr.value)}"]`;
-      try { if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel; } catch (_) {}
+      try {
+        if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel;
+      } catch (_) {}
     }
 
     const cls = Array.from(el.classList)
-      .filter(c => !/\b(active|focus|hover|selected|slds-is-open)\b/.test(c))
+      .filter((c) => !/\b(active|focus|hover|selected|slds-is-open)\b/.test(c))
       .slice(0, 2)
-      .map(c => `.${CSS.escape(c)}`)
-      .join('');
+      .map((c) => `.${CSS.escape(c)}`)
+      .join("");
     const candidate = cls ? `${tag}${cls}` : tag;
-    try { if ((root.querySelectorAll?.(candidate) ?? []).length === 1) return candidate; } catch (_) {}
+    try {
+      if ((root.querySelectorAll?.(candidate) ?? []).length === 1)
+        return candidate;
+    } catch (_) {}
 
     const parent = el.parentElement;
     if (parent) {
-      const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+      const siblings = Array.from(parent.children).filter(
+        (c) => c.tagName === el.tagName
+      );
       const idx = siblings.indexOf(el) + 1;
       return siblings.length > 1 ? `${tag}:nth-of-type(${idx})` : tag;
     }
@@ -116,7 +154,11 @@
   function buildShadowPierceChain(el) {
     const segments = [];
     let current = el;
-    while (current && current !== document.documentElement && current !== document.body) {
+    while (
+      current &&
+      current !== document.documentElement &&
+      current !== document.body
+    ) {
       const root = current.getRootNode();
       const segment = buildSegmentInRoot(current, root);
       if (!segment) break;
@@ -127,32 +169,39 @@
         break; // reached the document root
       }
     }
-    return segments.length > 1 ? segments.join(' >>> ') : null;
+    return segments.length > 1 ? segments.join(" >>> ") : null;
   }
 
   // ── State ────────────────────────────────────────────────────────────────────
-  let lastSelection = '';
+  let lastSelection = "";
   let lastSelectionEl = null;
   let lastCopiedVarName = null;
-  let pendingInputChange = null;  // debounce: fire change step only on blur/change
-  let _clickTimer = null;         // double-click detection: delay single clicks
+  let pendingInputChange = null; // debounce: fire change step only on blur/change
+  let _clickTimer = null; // double-click detection: delay single clicks
   let _pendingClickStep = null;
-  
+
   // ── Send a step to the service worker ────────────────────────────────────────
-  let _lastStepKey = '';
+  let _lastStepKey = "";
   let _lastStepTime = 0;
 
   function sendStep(step) {
     // Deduplicate: ignore identical step type + selector within 200ms.
     // Covers label→input synthetic clicks, allFrames double-injection edge cases, etc.
-    const key = step.type + '|' + (step.selectors?.[0]?.[0] ?? '') + '|' + (step.value ?? '') + '|' + (step.key ?? '');
+    const key =
+      step.type +
+      "|" +
+      (step.selectors?.[0]?.[0] ?? "") +
+      "|" +
+      (step.value ?? "") +
+      "|" +
+      (step.key ?? "");
     const now = Date.now();
     if (key === _lastStepKey && now - _lastStepTime < 200) return;
     _lastStepKey = key;
     _lastStepTime = now;
 
     try {
-      chrome.runtime.sendMessage({ type: 'RECORD_STEP', payload: { step } });
+      chrome.runtime.sendMessage({ type: "RECORD_STEP", payload: { step } });
     } catch (_) {
       // Extension context invalidated (e.g. extension reloaded while page is open) — ignore.
     }
@@ -166,18 +215,26 @@
     // On Salesforce, elements inside a shadow root must be scoped to that root.
     const root = el.getRootNode();
     const qsAll = (sel) => {
-      try { return (root.querySelectorAll?.(sel) ?? document.querySelectorAll(sel)).length; }
-      catch (_) { return 0; }
+      try {
+        return (root.querySelectorAll?.(sel) ?? document.querySelectorAll(sel))
+          .length;
+      } catch (_) {
+        return 0;
+      }
     };
 
     // Prefer id — CSS.escape handles any id value (leading underscores, digits, etc.)
     if (el.id) return `#${CSS.escape(el.id)}`;
 
     // Prefer unique data-* attribute (skip browser-extension injected attributes)
-    const INJECTED_ATTR_PREFIXES = ['data-dashlane-', 'data-lastpass-', 'data-1p-'];
+    const INJECTED_ATTR_PREFIXES = [
+      "data-dashlane-",
+      "data-lastpass-",
+      "data-1p-"
+    ];
     for (const attr of el.attributes) {
-      if (!attr.name.startsWith('data-') || !attr.value) continue;
-      if (INJECTED_ATTR_PREFIXES.some(p => attr.name.startsWith(p))) continue;
+      if (!attr.name.startsWith("data-") || !attr.value) continue;
+      if (INJECTED_ATTR_PREFIXES.some((p) => attr.name.startsWith(p))) continue;
       const sel = `${el.tagName.toLowerCase()}[${attr.name}="${CSS.escape(attr.value)}"]`;
       if (qsAll(sel) === 1) return sel;
     }
@@ -191,10 +248,10 @@
     // type + class fallback
     const tag = el.tagName.toLowerCase();
     const cls = Array.from(el.classList)
-      .filter(c => !/\bactive\b|\bfocus\b|\bhover\b/.test(c))  // skip state classes
+      .filter((c) => !/\bactive\b|\bfocus\b|\bhover\b/.test(c)) // skip state classes
       .slice(0, 2)
-      .map(c => `.${CSS.escape(c)}`)
-      .join('');
+      .map((c) => `.${CSS.escape(c)}`)
+      .join("");
     const candidate = cls ? `${tag}${cls}` : tag;
 
     // Build nth-child if not unique
@@ -209,12 +266,14 @@
       const tag = node.tagName.toLowerCase();
       const parent = node.parentElement;
       if (!parent) break;
-      const siblings = Array.from(parent.children).filter(c => c.tagName === node.tagName);
+      const siblings = Array.from(parent.children).filter(
+        (c) => c.tagName === node.tagName
+      );
       const idx = siblings.indexOf(node) + 1;
       parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${idx})` : tag);
       node = parent;
     }
-    return parts.join(' > ');
+    return parts.join(" > ");
   }
 
   function buildXPath(el) {
@@ -223,22 +282,27 @@
     while (node && node.nodeType === Node.ELEMENT_NODE) {
       const tag = node.tagName.toLowerCase();
       const parent = node.parentElement;
-      if (!parent) { parts.unshift(tag); break; }
-      const siblings = Array.from(parent.children).filter(c => c.tagName === node.tagName);
+      if (!parent) {
+        parts.unshift(tag);
+        break;
+      }
+      const siblings = Array.from(parent.children).filter(
+        (c) => c.tagName === node.tagName
+      );
       const idx = siblings.indexOf(node) + 1;
       parts.unshift(siblings.length > 1 ? `${tag}[${idx}]` : tag);
       node = parent;
     }
-    return `//${parts.join('/')}`;
+    return `//${parts.join("/")}`;
   }
 
   function getAriaLabel(el) {
     if (!el) return null;
     // aria-label attribute
-    const direct = el.getAttribute('aria-label');
+    const direct = el.getAttribute("aria-label");
     if (direct) return direct;
     // aria-labelledby → look up the referenced element
-    const labelledBy = el.getAttribute('aria-labelledby');
+    const labelledBy = el.getAttribute("aria-labelledby");
     if (labelledBy) {
       const ref = document.getElementById(labelledBy);
       if (ref) return ref.textContent.trim();
@@ -249,9 +313,14 @@
       if (label) return label.textContent.trim();
     }
     // role + text content (buttons, links)
-    const role = el.getAttribute('role') || el.tagName.toLowerCase();
+    const role = el.getAttribute("role") || el.tagName.toLowerCase();
     const text = el.textContent?.trim();
-    if (['button','link','menuitem','tab'].includes(role) && text && text.length < 60) return text;
+    if (
+      ["button", "link", "menuitem", "tab"].includes(role) &&
+      text &&
+      text.length < 60
+    )
+      return text;
     return null;
   }
 
@@ -270,8 +339,14 @@
     if (aria) selectors.push([`aria/${aria}`]);
 
     // For submit/button inputs, add value-based selector first (most stable label)
-    if (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button') && el.value) {
-      selectors.push([`input[type="${el.type}"][value="${CSS.escape(el.value)}"]`]);
+    if (
+      el.tagName === "INPUT" &&
+      (el.type === "submit" || el.type === "button") &&
+      el.value
+    ) {
+      selectors.push([
+        `input[type="${el.type}"][value="${CSS.escape(el.value)}"]`
+      ]);
     }
 
     const css = buildCSSSelector(el);
@@ -280,14 +355,19 @@
     // Always include name attribute as an additional fallback for form elements
     if (el.name) {
       const nameSel = `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]`;
-      if (!selectors.some(s => s[0] === nameSel)) selectors.push([nameSel]);
+      if (!selectors.some((s) => s[0] === nameSel)) selectors.push([nameSel]);
     }
 
     const xpath = buildXPath(el);
     if (xpath) selectors.push([`xpath/${xpath}`]);
 
     const text = el.textContent?.trim();
-    if (text && text.length > 0 && text.length < 50 && !['INPUT','TEXTAREA','SELECT'].includes(el.tagName)) {
+    if (
+      text &&
+      text.length > 0 &&
+      text.length < 50 &&
+      !["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)
+    ) {
       selectors.push([`text/${text}`]);
     }
 
@@ -306,27 +386,33 @@
     }
   }
 
-  const frameInfo = getFrameIndex().length > 0 ? { frame: getFrameIndex() } : {};
+  const frameInfo =
+    getFrameIndex().length > 0 ? { frame: getFrameIndex() } : {};
 
   // ── Event Handlers ────────────────────────────────────────────────────────────
 
   function handleClick(e) {
     const el = getTarget(e);
-    if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
+    if (!el || el.tagName === "HTML" || el.tagName === "BODY") return;
     // Clicks on <select> and <option> are captured as selectOption steps via change event
-    if (el.tagName === 'SELECT' || el.tagName === 'OPTION' || el.closest('select')) return;
+    if (
+      el.tagName === "SELECT" ||
+      el.tagName === "OPTION" ||
+      el.closest("select")
+    )
+      return;
 
     const rect = el.getBoundingClientRect();
     const offsetX = Math.round(e.clientX - rect.left);
     const offsetY = Math.round(e.clientY - rect.top);
 
     const step = {
-      type: 'click',
-      target: 'main',
+      type: "click",
+      target: "main",
       selectors: generateSelectors(el),
       offsetX: Math.max(0, offsetX),
       offsetY: Math.max(0, offsetY),
-      ...frameInfo,
+      ...frameInfo
     };
 
     // Delay sending so that a dblclick can cancel these and record doubleClick instead.
@@ -337,10 +423,10 @@
         // Auto-record a waitForElement before every click so replay waits for
         // the element to be present without requiring manual right-click setup.
         sendStep({
-          type: 'waitForElement',
+          type: "waitForElement",
           target: _pendingClickStep.target,
           selectors: _pendingClickStep.selectors,
-          ...(_pendingClickStep.frame ? { frame: _pendingClickStep.frame } : {}),
+          ...(_pendingClickStep.frame ? { frame: _pendingClickStep.frame } : {})
         });
         sendStep(_pendingClickStep);
         _pendingClickStep = null;
@@ -350,7 +436,7 @@
 
   function handleDoubleClick(e) {
     const el = getTarget(e);
-    if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
+    if (!el || el.tagName === "HTML" || el.tagName === "BODY") return;
 
     // Cancel the two pending single-click steps fired before dblclick.
     clearTimeout(_clickTimer);
@@ -361,24 +447,24 @@
     const offsetY = Math.round(e.clientY - rect.top);
 
     sendStep({
-      type: 'waitForElement',
-      target: 'main',
+      type: "waitForElement",
+      target: "main",
       selectors: generateSelectors(el),
-      ...frameInfo,
+      ...frameInfo
     });
     sendStep({
-      type: 'doubleClick',
-      target: 'main',
+      type: "doubleClick",
+      target: "main",
       selectors: generateSelectors(el),
       offsetX: Math.max(0, offsetX),
       offsetY: Math.max(0, offsetY),
-      ...frameInfo,
+      ...frameInfo
     });
   }
 
   // Track text selection (mouseup fires after selection is complete)
   function handleMouseUp(e) {
-    const sel = window.getSelection()?.toString() ?? '';
+    const sel = window.getSelection()?.toString() ?? "";
     if (sel.length > 0) {
       lastSelection = sel;
       lastSelectionEl = e.target;
@@ -388,7 +474,7 @@
   // Debounce input → fire step on change/blur instead of every keystroke
   function handleInput(e) {
     const el = e.target;
-    if (!el || !['INPUT','TEXTAREA'].includes(el.tagName)) return;
+    if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
     pendingInputChange = { el, value: el.value };
   }
 
@@ -396,34 +482,44 @@
     const el = e.target;
     if (!el) return;
 
-    if (el.tagName === 'SELECT') {
+    if (el.tagName === "SELECT") {
       // Record as a dedicated selectOption step with full option details
       const selectedOption = el.options[el.selectedIndex];
       const selectors = generateSelectors(el);
-      sendStep({ type: 'waitForElement', target: 'main', selectors, ...frameInfo });
       sendStep({
-        type: 'selectOption',
-        target: 'main',
+        type: "waitForElement",
+        target: "main",
         selectors,
-        value:        el.value,                          // option value attr (used to set select.value)
-        label:        selectedOption?.text?.trim() ?? el.value, // visible text (shown in UI)
-        optionIndex:  el.selectedIndex,                  // fallback if value changes
-        ...frameInfo,
+        ...frameInfo
+      });
+      sendStep({
+        type: "selectOption",
+        target: "main",
+        selectors,
+        value: el.value, // option value attr (used to set select.value)
+        label: selectedOption?.text?.trim() ?? el.value, // visible text (shown in UI)
+        optionIndex: el.selectedIndex, // fallback if value changes
+        ...frameInfo
       });
       return;
     }
 
     // Plain text input
-    const value = pendingInputChange?.el === el ? el.value : (el.value ?? '');
+    const value = pendingInputChange?.el === el ? el.value : (el.value ?? "");
     pendingInputChange = null;
     const selectors = generateSelectors(el);
-    sendStep({ type: 'waitForElement', target: 'main', selectors, ...frameInfo });
     sendStep({
-      type: 'change',
-      target: 'main',
+      type: "waitForElement",
+      target: "main",
+      selectors,
+      ...frameInfo
+    });
+    sendStep({
+      type: "change",
+      target: "main",
       selectors,
       value,
-      ...frameInfo,
+      ...frameInfo
     });
   }
 
@@ -433,53 +529,65 @@
   // after a short delay to let the autocomplete library update the value first.
   function handleBlur(e) {
     const el = e.target;
-    if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return;
+    if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
     if (!pendingInputChange || pendingInputChange.el !== el) return;
 
     const capturedEl = el;
     setTimeout(() => {
       // If handleChange already fired (change event arrived within the delay), skip.
       if (!pendingInputChange || pendingInputChange.el !== capturedEl) return;
-      const value = capturedEl.value ?? '';
+      const value = capturedEl.value ?? "";
       pendingInputChange = null;
       const selectors = generateSelectors(capturedEl);
-      sendStep({ type: 'waitForElement', target: 'main', selectors, ...frameInfo });
       sendStep({
-        type: 'change',
-        target: 'main',
+        type: "waitForElement",
+        target: "main",
+        selectors,
+        ...frameInfo
+      });
+      sendStep({
+        type: "change",
+        target: "main",
         selectors,
         value,
-        ...frameInfo,
+        ...frameInfo
       });
     }, 200);
   }
 
   // Copy event — covers Ctrl+C, Cmd+C, and right-click → Copy
   function handleCopy(_e) {
-    const sel = window.getSelection()?.toString() ?? lastSelection ?? '';
+    const sel = window.getSelection()?.toString() ?? lastSelection ?? "";
     const activeEl = document.activeElement;
 
     let copiedText = sel;
     // If nothing selected globally, try the active input's selection
-    if (!copiedText && activeEl && ['INPUT','TEXTAREA'].includes(activeEl.tagName)) {
-      copiedText = activeEl.value.slice(activeEl.selectionStart, activeEl.selectionEnd);
-      if (!copiedText) copiedText = activeEl.value;  // fallback: whole value
+    if (
+      !copiedText &&
+      activeEl &&
+      ["INPUT", "TEXTAREA"].includes(activeEl.tagName)
+    ) {
+      copiedText = activeEl.value.slice(
+        activeEl.selectionStart,
+        activeEl.selectionEnd
+      );
+      if (!copiedText) copiedText = activeEl.value; // fallback: whole value
     }
 
     const varName = `clipboard_${Date.now()}`;
     lastCopiedVarName = varName;
 
     sendStep({
-      type: 'copy',
-      target: 'main',
+      type: "copy",
+      target: "main",
       variableName: varName,
       snapshotValue: copiedText,
       selectors: generateSelectors(activeEl || lastSelectionEl),
-      ...frameInfo,
+      ...frameInfo
     });
 
     // Reset selection tracking
-    lastSelection = '';
+    lastSelection = "";
     lastSelectionEl = null;
   }
 
@@ -487,36 +595,72 @@
   function handlePaste(_e) {
     const el = document.activeElement;
     sendStep({
-      type: 'paste',
-      target: 'main',
+      type: "paste",
+      target: "main",
       variableName: lastCopiedVarName,
       selectors: generateSelectors(el),
-      ...frameInfo,
+      ...frameInfo
     });
   }
 
   // Keyboard events — only record non-trivial keys (exclude individual char keys
   // since those are captured by the change/input handlers)
   const SPECIAL_KEYS = new Set([
-    'Enter','Tab','Escape','Backspace','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
-    'Home','End','PageUp','PageDown','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
-    'Meta','Control','Alt','Shift',
+    "Enter",
+    "Tab",
+    "Escape",
+    "Backspace",
+    "Delete",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "Home",
+    "End",
+    "PageUp",
+    "PageDown",
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8",
+    "F9",
+    "F10",
+    "F11",
+    "F12",
+    "Meta",
+    "Control",
+    "Alt",
+    "Shift"
   ]);
 
   function handleKeyDown(e) {
     // Clipboard shortcuts are handled by copy/paste events — skip them here
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v' || e.key === 'x')) return;
+    if (
+      (e.ctrlKey || e.metaKey) &&
+      (e.key === "c" || e.key === "v" || e.key === "x")
+    )
+      return;
 
     // Only record modifier combos or special keys
-    if (!SPECIAL_KEYS.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) return;
+    if (!SPECIAL_KEYS.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey)
+      return;
 
-    sendStep({ type: 'keyDown', target: 'main', key: e.key, ...frameInfo });
+    sendStep({ type: "keyDown", target: "main", key: e.key, ...frameInfo });
   }
 
   function handleKeyUp(e) {
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v' || e.key === 'x')) return;
-    if (!SPECIAL_KEYS.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) return;
-    sendStep({ type: 'keyUp', target: 'main', key: e.key, ...frameInfo });
+    if (
+      (e.ctrlKey || e.metaKey) &&
+      (e.key === "c" || e.key === "v" || e.key === "x")
+    )
+      return;
+    if (!SPECIAL_KEYS.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey)
+      return;
+    sendStep({ type: "keyUp", target: "main", key: e.key, ...frameInfo });
   }
 
   // Right-click: send the element info directly to the SW via message.
@@ -524,28 +668,28 @@
   // a later executeScript call runs in a different execution context in MV3.
   function handleContextMenu(e) {
     const el = getTarget(e);
-    if (!el || el.tagName === 'HTML' || el.tagName === 'BODY') return;
+    if (!el || el.tagName === "HTML" || el.tagName === "BODY") return;
     const rect = el.getBoundingClientRect();
 
     // Capture element's current text/value so the SW can use it as a default
     // for the "Save variable" dialog without needing another executeScript round-trip.
-    let elementValue = '';
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) {
-      elementValue = el.value ?? '';
+    let elementValue = "";
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) {
+      elementValue = el.value ?? "";
     } else {
-      elementValue = el.textContent?.trim() ?? '';
+      elementValue = el.textContent?.trim() ?? "";
     }
 
     try {
       chrome.runtime.sendMessage({
-        type: 'STORE_CONTEXT_EL',
+        type: "STORE_CONTEXT_EL",
         payload: {
           selectors: generateSelectors(el),
           offsetX: Math.max(0, Math.round(e.clientX - rect.left)),
           offsetY: Math.max(0, Math.round(e.clientY - rect.top)),
           frame: getFrameIndex(),
-          elementValue: elementValue.slice(0, 200),
-        },
+          elementValue: elementValue.slice(0, 200)
+        }
       });
     } catch (_) {
       // Extension context invalidated — ignore.
@@ -555,33 +699,39 @@
   // ── Register listeners ────────────────────────────────────────────────────────
   // Note: navigate steps are recorded by the service worker via webNavigation.onDOMContentLoaded,
   // which captures the correct destination URL. beforeunload is not used here.
-  document.addEventListener('click',       handleClick,       { capture: true });
-  document.addEventListener('dblclick',    handleDoubleClick, { capture: true });
-  document.addEventListener('mouseup',     handleMouseUp,     { capture: true });
-  document.addEventListener('input',       handleInput,       { capture: true });
-  document.addEventListener('change',      handleChange,      { capture: true });
-  document.addEventListener('blur',        handleBlur,        { capture: true });
-  document.addEventListener('copy',        handleCopy,        { capture: true });
-  document.addEventListener('paste',       handlePaste,       { capture: true });
-  document.addEventListener('keydown',     handleKeyDown,     { capture: true });
-  document.addEventListener('keyup',       handleKeyUp,       { capture: true });
-  document.addEventListener('contextmenu', handleContextMenu, { capture: true });
+  document.addEventListener("click", handleClick, { capture: true });
+  document.addEventListener("dblclick", handleDoubleClick, { capture: true });
+  document.addEventListener("mouseup", handleMouseUp, { capture: true });
+  document.addEventListener("input", handleInput, { capture: true });
+  document.addEventListener("change", handleChange, { capture: true });
+  document.addEventListener("blur", handleBlur, { capture: true });
+  document.addEventListener("copy", handleCopy, { capture: true });
+  document.addEventListener("paste", handlePaste, { capture: true });
+  document.addEventListener("keydown", handleKeyDown, { capture: true });
+  document.addEventListener("keyup", handleKeyUp, { capture: true });
+  document.addEventListener("contextmenu", handleContextMenu, {
+    capture: true
+  });
 
   // ── Cleanup function (called by service worker on stop/abort) ─────────────────
   window.__recorderCleanup = function () {
-    document.removeEventListener('click',       handleClick,       { capture: true });
-    document.removeEventListener('dblclick',    handleDoubleClick, { capture: true });
-    document.removeEventListener('mouseup',     handleMouseUp,     { capture: true });
+    document.removeEventListener("click", handleClick, { capture: true });
+    document.removeEventListener("dblclick", handleDoubleClick, {
+      capture: true
+    });
+    document.removeEventListener("mouseup", handleMouseUp, { capture: true });
     clearTimeout(_clickTimer);
     _pendingClickStep = null;
-    document.removeEventListener('input',       handleInput,       { capture: true });
-    document.removeEventListener('change',      handleChange,      { capture: true });
-    document.removeEventListener('blur',        handleBlur,        { capture: true });
-    document.removeEventListener('copy',        handleCopy,        { capture: true });
-    document.removeEventListener('paste',       handlePaste,       { capture: true });
-    document.removeEventListener('keydown',     handleKeyDown,     { capture: true });
-    document.removeEventListener('keyup',       handleKeyUp,       { capture: true });
-    document.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+    document.removeEventListener("input", handleInput, { capture: true });
+    document.removeEventListener("change", handleChange, { capture: true });
+    document.removeEventListener("blur", handleBlur, { capture: true });
+    document.removeEventListener("copy", handleCopy, { capture: true });
+    document.removeEventListener("paste", handlePaste, { capture: true });
+    document.removeEventListener("keydown", handleKeyDown, { capture: true });
+    document.removeEventListener("keyup", handleKeyUp, { capture: true });
+    document.removeEventListener("contextmenu", handleContextMenu, {
+      capture: true
+    });
     window.__lastContextMenuEl = null;
     window.__recorderActive = false;
     window.__recorderCleanup = null;

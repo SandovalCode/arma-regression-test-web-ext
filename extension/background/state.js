@@ -2,13 +2,13 @@
 export const recordingState = {
   active: false,
   tabId: null,
-  steps: [],
+  steps: []
 };
 
 export const replayState = {
   active: false,
   aborted: false,
-  tabId: null,
+  tabId: null
 };
 
 // Clipboard variables that survive cross-site navigation during a run

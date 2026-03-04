@@ -11,8 +11,16 @@
     <header>
       <h1>Test Recorder</h1>
       <div class="header-actions">
-        <button id="btn-reset" class="btn-icon" title="Reset — clears any stuck recording or replay state">↺</button>
-        <button id="btn-theme" class="theme-toggle" title="Toggle theme">🌙</button>
+        <button
+          id="btn-reset"
+          class="btn-icon"
+          title="Reset — clears any stuck recording or replay state"
+        >
+          ↺
+        </button>
+        <button id="btn-theme" class="theme-toggle" title="Toggle theme">
+          🌙
+        </button>
       </div>
     </header>
 
@@ -103,11 +111,21 @@
     <!-- ── Save Variable Dialog ── -->
     <div id="var-overlay" class="hidden overlay">
       <div class="dialog">
-        <h3>Save variable</h3>
+        <h3>Copy variable</h3>
         <label class="edit-label">Variable name</label>
-        <input id="var-name" type="text" placeholder="e.g. username" maxlength="40" />
+        <input
+          id="var-name"
+          type="text"
+          placeholder="e.g. username"
+          maxlength="40"
+        />
         <label class="edit-label">Default value</label>
-        <input id="var-value" type="text" placeholder="Value from page" maxlength="200" />
+        <input
+          id="var-value"
+          type="text"
+          placeholder="Value from page"
+          maxlength="200"
+        />
         <div class="dialog-actions">
           <button id="btn-var-save" class="btn btn-primary">Save</button>
           <button id="btn-var-cancel" class="btn btn-ghost">Cancel</button>
@@ -121,10 +139,14 @@
         <h3>Paste variable</h3>
         <label class="edit-label">Select variable</label>
         <select id="paste-var-select" class="paste-var-select"></select>
-        <p id="paste-var-empty" class="paste-var-empty hidden">No saved variables yet. Use "Save variable" first.</p>
+        <p id="paste-var-empty" class="paste-var-empty hidden">
+          No copied variables yet. Use "Copy variable" first.
+        </p>
         <div class="dialog-actions">
           <button id="btn-paste-var-save" class="btn btn-primary">Paste</button>
-          <button id="btn-paste-var-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="btn-paste-var-cancel" class="btn btn-ghost">
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -135,7 +157,13 @@
         <h3>Wait for time</h3>
         <label class="edit-label">Duration</label>
         <div class="wait-duration-row">
-          <input id="wait-duration" type="number" min="0.1" step="0.1" value="1" />
+          <input
+            id="wait-duration"
+            type="number"
+            min="0.1"
+            step="0.1"
+            value="1"
+          />
           <span class="wait-unit">seconds</span>
         </div>
         <div class="dialog-actions">
@@ -150,13 +178,22 @@
       <div class="dialog dialog-wide">
         <h3>Edit recording</h3>
         <label class="edit-label">Name</label>
-        <input id="edit-title" type="text" placeholder="Recording name" maxlength="60" />
+        <input
+          id="edit-title"
+          type="text"
+          placeholder="Recording name"
+          maxlength="60"
+        />
         <div class="edit-steps-header">
-          <span class="edit-label">Steps (<span id="edit-step-count">0</span>)</span>
+          <span class="edit-label"
+            >Steps (<span id="edit-step-count">0</span>)</span
+          >
         </div>
         <ul id="edit-steps-list" class="edit-steps-list"></ul>
         <div class="dialog-actions">
-          <button id="btn-edit-save" class="btn btn-primary">Save changes</button>
+          <button id="btn-edit-save" class="btn btn-primary">
+            Save changes
+          </button>
           <button id="btn-edit-cancel" class="btn btn-ghost">Cancel</button>
         </div>
       </div>

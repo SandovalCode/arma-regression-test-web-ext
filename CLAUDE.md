@@ -9,6 +9,7 @@ A Chrome Extension (Manifest V3) that lets **non-technical users** record browse
 ## Why does it exist?
 
 The team has no QA. Users need to:
+
 1. Record their browser actions with one click from the side panel
 2. Replay those actions automatically
 3. View all saved tests, run them one by one or all in sequence
@@ -59,23 +60,24 @@ extension/
 
 ## Step types and CDP mapping
 
-| Step type | CDP action |
-|---|---|
-| `navigate` | `chrome.tabs.get` → if loading: wait for `Page.loadEventFired`; if already at URL: skip; otherwise: `Page.navigate` |
-| `click` | `Input.dispatchMouseEvent` (moved → pressed → released) |
-| `doubleClick` | Same as click with `clickCount: 2` |
-| `hover` | `Input.dispatchMouseEvent type:mouseMoved` |
-| `change` | focus + `Input.insertText` + dispatch input/change events |
-| `keyDown/keyUp` | `Input.dispatchKeyEvent` |
-| `waitForElement` | Polling `Runtime.evaluate` every 500ms, 30s timeout |
-| `copy` | `Runtime.evaluate` to capture selected text → stored in SW's `clipboardVars` Map |
-| `paste` | Read `clipboardVars[variableName]` → `Input.insertText` (works cross-site) |
-| `scroll` | `Input.dispatchMouseEvent type:mouseWheel` |
-| `setViewport` | `Emulation.setDeviceMetricsOverride` |
+| Step type        | CDP action                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `navigate`       | `chrome.tabs.get` → if loading: wait for `Page.loadEventFired`; if already at URL: skip; otherwise: `Page.navigate` |
+| `click`          | `Input.dispatchMouseEvent` (moved → pressed → released)                                                             |
+| `doubleClick`    | Same as click with `clickCount: 2`                                                                                  |
+| `hover`          | `Input.dispatchMouseEvent type:mouseMoved`                                                                          |
+| `change`         | focus + `Input.insertText` + dispatch input/change events                                                           |
+| `keyDown/keyUp`  | `Input.dispatchKeyEvent`                                                                                            |
+| `waitForElement` | Polling `Runtime.evaluate` every 500ms, 30s timeout                                                                 |
+| `copy`           | `Runtime.evaluate` to capture selected text → stored in SW's `clipboardVars` Map                                    |
+| `paste`          | Read `clipboardVars[variableName]` → `Input.insertText` (works cross-site)                                          |
+| `scroll`         | `Input.dispatchMouseEvent type:mouseWheel`                                                                          |
+| `setViewport`    | `Emulation.setDeviceMetricsOverride`                                                                                |
 
 ## Selectors (5 strategies with fallback)
 
 Priority order in `selector-resolver.js`:
+
 1. `aria/<label>` — aria-label, aria-labelledby, label[for]
 2. Minimal CSS selector (`#id`, `[data-*]`, `[name=]`, tag+class)
 3. `xpath/<expr>` — relative path from root
@@ -85,6 +87,7 @@ Priority order in `selector-resolver.js`:
 ## Context menu (right-click during recording)
 
 Two options, only available when a recording is active:
+
 - **Registrar Hover** → records a `hover` step on the element under the cursor
 - **Esperar elemento** → records a `waitForElement` step on the element under the cursor
 
@@ -94,23 +97,23 @@ The content script sends element info via `STORE_CONTEXT_EL` to the SW. The SW s
 
 ```js
 // sidepanel → SW
-START_RECORDING, STOP_RECORDING, ABORT_RECORDING
-RUN_RECORDING, RUN_ALL, ABORT_RUN
-GET_RECORDINGS, GET_HISTORY
-DELETE_RECORDING
-DELETE_STEP    // removes a step by index during recording (splice from recordingState.steps)
+(START_RECORDING, STOP_RECORDING, ABORT_RECORDING);
+(RUN_RECORDING, RUN_ALL, ABORT_RUN);
+(GET_RECORDINGS, GET_HISTORY);
+DELETE_RECORDING;
+DELETE_STEP; // removes a step by index during recording (splice from recordingState.steps)
 
 // content script → SW
-STORE_CONTEXT_EL   // element info from right-click (for context menu handler)
-RECORD_STEP        // captured step (also delivered directly to sidepanel)
+STORE_CONTEXT_EL; // element info from right-click (for context menu handler)
+RECORD_STEP; // captured step (also delivered directly to sidepanel)
 
 // SW → sidepanel (broadcasts)
-RECORD_STEP        // step created by SW itself (hover, navigate)
-STEP_PROGRESS      // replay progress update
-RUN_COMPLETE       // single run finished (passed/failed)
-BATCH_PROGRESS     // batch: moved to next recording
-BATCH_COMPLETE     // batch: all recordings done
-RECORDING_STATE    // confirmation of stop/abort
+RECORD_STEP; // step created by SW itself (hover, navigate)
+STEP_PROGRESS; // replay progress update
+RUN_COMPLETE; // single run finished (passed/failed)
+BATCH_PROGRESS; // batch: moved to next recording
+BATCH_COMPLETE; // batch: all recordings done
+RECORDING_STATE; // confirmation of stop/abort
 ```
 
 ## SW in-memory state
@@ -126,11 +129,13 @@ lastContextMenuEl = { selectors, offsetX, offsetY, frame }  // last right-clicke
 ## Data model (chrome.storage.local)
 
 **recordings** — `Recording[]`
+
 ```js
 { id: string, title: string, createdAt: ISO, steps: Step[] }
 ```
 
 **runHistory** — `RunResult[]` (max 100 entries)
+
 ```js
 {
   runId, recordingId, recordingTitle,

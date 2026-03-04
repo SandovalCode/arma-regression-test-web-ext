@@ -1,8 +1,8 @@
-import { MSG } from '../shared/constants.js';
-import { saveRecording } from '../shared/storage.js';
-import { recordingState, replayState, recordingVarSnapshots } from './state.js';
-import { broadcast } from './utils.js';
-import { startKeepalive, stopKeepalive } from './keepalive.js';
+import { MSG } from "../shared/constants.js";
+import { saveRecording } from "../shared/storage.js";
+import { recordingState, replayState, recordingVarSnapshots } from "./state.js";
+import { broadcast } from "./utils.js";
+import { startKeepalive, stopKeepalive } from "./keepalive.js";
 
 // ── Recording ──────────────────────────────────────────────────────────────────
 export async function startRecording(tabId) {
@@ -14,17 +14,19 @@ export async function startRecording(tabId) {
       func: () => {
         window.__recorderCleanup?.();
         window.__recorderActive = false;
-      },
+      }
     });
-  } catch (_) { /* tab may not be ready yet, proceed anyway */ }
+  } catch (_) {
+    /* tab may not be ready yet, proceed anyway */
+  }
 
   // Record the current page as the first step so replay always begins on the right page.
   const tab = await chrome.tabs.get(tabId);
-  const startUrl = tab.url ?? '';
+  const startUrl = tab.url ?? "";
   const firstStep = {
-    type: 'navigate',
+    type: "navigate",
     url: startUrl,
-    assertedEvents: [{ type: 'navigation', url: startUrl, title: '' }],
+    assertedEvents: [{ type: "navigation", url: startUrl, title: "" }]
   };
 
   recordingVarSnapshots.clear();
@@ -35,7 +37,7 @@ export async function startRecording(tabId) {
   // Inject recorder content script
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['content/recorder.js'],
+    files: ["content/recorder.js"]
   });
 
   // Also inject on future navigations within this tab
@@ -47,15 +49,21 @@ async function onNavCommitted(details) {
   if (details.frameId !== 0) return; // only main-frame navigations
 
   // Skip internal browser URLs
-  const url = details.url ?? '';
-  if (!url || url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('about:')) return;
+  const url = details.url ?? "";
+  if (
+    !url ||
+    url.startsWith("chrome://") ||
+    url.startsWith("chrome-extension://") ||
+    url.startsWith("about:")
+  )
+    return;
 
   // Record a navigate step with the CORRECT destination URL
   // (details.url is where we're arriving, not where we came from)
   const step = {
-    type: 'navigate',
+    type: "navigate",
     url,
-    assertedEvents: [{ type: 'navigation', url, title: '' }],
+    assertedEvents: [{ type: "navigation", url, title: "" }]
   };
   recordingState.steps.push(step);
   broadcast(MSG.RECORD_STEP, { step });
@@ -64,15 +72,18 @@ async function onNavCommitted(details) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId: details.tabId, allFrames: true },
-      files: ['content/recorder.js'],
+      files: ["content/recorder.js"]
     });
   } catch (err) {
-    console.warn('[Recorder] Re-inject after nav failed:', err.message);
+    console.warn("[Recorder] Re-inject after nav failed:", err.message);
   }
 }
 
 export async function stopRecording(name, sendResponse) {
-  if (!recordingState.active) { sendResponse({ ok: false }); return; }
+  if (!recordingState.active) {
+    sendResponse({ ok: false });
+    return;
+  }
 
   recordingState.active = false;
   stopKeepalive();
@@ -82,12 +93,18 @@ export async function stopRecording(name, sendResponse) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId: recordingState.tabId, allFrames: true },
-      func: () => { window.__recorderCleanup?.(); },
+      func: () => {
+        window.__recorderCleanup?.();
+      }
     });
   } catch (_) {}
 
   const id = crypto.randomUUID();
-  const saved = await saveRecording({ id, title: name, steps: recordingState.steps });
+  const saved = await saveRecording({
+    id,
+    title: name,
+    steps: recordingState.steps
+  });
   broadcast(MSG.RECORDING_STATE, { recording: false });
   sendResponse({ ok: true, recording: saved });
 }
@@ -99,7 +116,9 @@ export async function abortRecording() {
   try {
     await chrome.scripting.executeScript({
       target: { tabId: recordingState.tabId, allFrames: true },
-      func: () => { window.__recorderCleanup?.(); },
+      func: () => {
+        window.__recorderCleanup?.();
+      }
     });
   } catch (_) {}
 }
@@ -112,7 +131,9 @@ export async function forceReset() {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: recordingState.tabId, allFrames: true },
-        func: () => { window.__recorderCleanup?.(); },
+        func: () => {
+          window.__recorderCleanup?.();
+        }
       });
     } catch (_) {}
   }
@@ -121,9 +142,16 @@ export async function forceReset() {
 
   // 2. Tear down any active replay
   if (replayState.active && replayState.tabId) {
-    try { await chrome.debugger.detach({ tabId: replayState.tabId }); } catch (_) {}
+    try {
+      await chrome.debugger.detach({ tabId: replayState.tabId });
+    } catch (_) {}
   }
-  Object.assign(replayState, { active: false, aborted: false, tabId: null, reattachPromise: null });
+  Object.assign(replayState, {
+    active: false,
+    aborted: false,
+    tabId: null,
+    reattachPromise: null
+  });
 
   // 3. Stop keepalive alarm
   stopKeepalive();

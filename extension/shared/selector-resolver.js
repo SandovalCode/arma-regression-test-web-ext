@@ -1,4 +1,4 @@
-import { STEP_TIMEOUT_MS, POLL_INTERVAL_MS } from './constants.js';
+import { STEP_TIMEOUT_MS, POLL_INTERVAL_MS } from "./constants.js";
 
 /**
  * Resolves a selectors array to an element's bounding box coordinates.
@@ -25,31 +25,46 @@ export async function resolveSelector(selectors, tabId, contextId, cdp) {
     try {
       const result = await tryResolve(selectorStr, tabId, contextId, cdp);
       if (result) return result;
-    } catch (_) { /* try next candidate */ }
+    } catch (_) {
+      /* try next candidate */
+    }
   }
 
   // Fallback: native CDP DOM.querySelector — bypasses framework-patched querySelector (e.g. LWC)
   for (const candidate of normalized) {
     const selectorStr = candidate[0];
-    if (!selectorStr || selectorStr.includes('/') || selectorStr.includes(' >>> ')) continue;
+    if (
+      !selectorStr ||
+      selectorStr.includes("/") ||
+      selectorStr.includes(" >>> ")
+    )
+      continue;
     try {
       const result = await tryResolveCDPDom(selectorStr, tabId, cdp);
       if (result) return result;
     } catch (_) {}
   }
 
-  const tried = normalized.map(c => c[0]).join(', ');
+  const tried = normalized.map((c) => c[0]).join(", ");
   throw new Error(`Selector not found. Tried: ${tried}`);
 }
 
 /**
  * Wait for an element to appear (for waitForElement steps).
  */
-export async function waitForSelector(selectors, tabId, contextId, cdp, timeoutMs = STEP_TIMEOUT_MS) {
+export async function waitForSelector(
+  selectors,
+  tabId,
+  contextId,
+  cdp,
+  timeoutMs = STEP_TIMEOUT_MS
+) {
   const deadline = Date.now() + timeoutMs;
   const normalized = normalizeSelectors(selectors);
   // Pre-filter CSS candidates for the CDP fallback (no aria/xpath/pierce/text prefixes or >>> chains)
-  const cssCandidates = normalized.filter(c => !c[0].includes('/') && !c[0].includes(' >>> '));
+  const cssCandidates = normalized.filter(
+    (c) => !c[0].includes("/") && !c[0].includes(" >>> ")
+  );
 
   // Tracks consecutive poll iterations where every primary tryResolve call threw
   // (as opposed to returning null = "element not found").  A throw means a CDP error —
@@ -85,7 +100,9 @@ export async function waitForSelector(selectors, tabId, contextId, cdp, timeoutM
       if (++consecutiveAllThrew >= 2) {
         // Every selector threw twice in a row — debugger is almost certainly detached.
         // Fail fast so the outer loop can wait for re-attachment instead of blocking here.
-        throw lastCdpErr ?? new Error('CDP unavailable — debugger may be detached');
+        throw (
+          lastCdpErr ?? new Error("CDP unavailable — debugger may be detached")
+        );
       }
     } else {
       consecutiveAllThrew = 0;
@@ -94,7 +111,7 @@ export async function waitForSelector(selectors, tabId, contextId, cdp, timeoutM
     await sleep(POLL_INTERVAL_MS);
   }
 
-  const tried = normalized.map(c => c[0]).join(', ');
+  const tried = normalized.map((c) => c[0]).join(", ");
   throw new Error(`waitForElement timed out (${timeoutMs}ms). Tried: ${tried}`);
 }
 
@@ -103,19 +120,27 @@ export async function waitForSelector(selectors, tabId, contextId, cdp, timeoutM
 function normalizeSelectors(raw) {
   if (!Array.isArray(raw) || raw.length === 0) return [];
   // Already string[][] — filter out any non-string entries (guards against [object Object])
-  if (Array.isArray(raw[0])) return raw.filter(c => Array.isArray(c) && typeof c[0] === 'string' && c[0]);
+  if (Array.isArray(raw[0]))
+    return raw.filter(
+      (c) => Array.isArray(c) && typeof c[0] === "string" && c[0]
+    );
   // Flat string[] — wrap each in an array
-  return raw.filter(s => typeof s === 'string' && s).map(s => [s]);
+  return raw.filter((s) => typeof s === "string" && s).map((s) => [s]);
 }
 
 // ── Main dispatch ──────────────────────────────────────────────────────────────
 
 async function tryResolve(selectorStr, tabId, contextId, cdp) {
-  if (selectorStr.startsWith('aria/'))   return resolveAria(selectorStr.slice(5), tabId, contextId, cdp);
-  if (selectorStr.startsWith('xpath/'))  return resolveXPath(selectorStr.slice(6), tabId, contextId, cdp);
-  if (selectorStr.startsWith('pierce/')) return resolvePierce(selectorStr.slice(7), tabId, contextId, cdp);
-  if (selectorStr.startsWith('text/'))   return resolveText(selectorStr.slice(5), tabId, contextId, cdp);
-  if (selectorStr.includes(' >>> '))     return resolvePierceChain(selectorStr, tabId, contextId, cdp);
+  if (selectorStr.startsWith("aria/"))
+    return resolveAria(selectorStr.slice(5), tabId, contextId, cdp);
+  if (selectorStr.startsWith("xpath/"))
+    return resolveXPath(selectorStr.slice(6), tabId, contextId, cdp);
+  if (selectorStr.startsWith("pierce/"))
+    return resolvePierce(selectorStr.slice(7), tabId, contextId, cdp);
+  if (selectorStr.startsWith("text/"))
+    return resolveText(selectorStr.slice(5), tabId, contextId, cdp);
+  if (selectorStr.includes(" >>> "))
+    return resolvePierceChain(selectorStr, tabId, contextId, cdp);
   return resolveCSS(selectorStr, tabId, contextId, cdp);
 }
 
@@ -124,7 +149,7 @@ async function tryResolve(selectorStr, tabId, contextId, cdp) {
 async function resolveCSS(selector, tabId, contextId, cdp) {
   // Use getElementById for #id selectors — LWC (Salesforce Lightning) patches
   // document.querySelector to enforce shadow encapsulation but does NOT patch getElementById.
-  const getEl = selector.startsWith('#')
+  const getEl = selector.startsWith("#")
     ? `document.getElementById(${JSON.stringify(selector.slice(1))})`
     : `document.querySelector(${JSON.stringify(selector)})`;
   const expr = `
@@ -161,8 +186,8 @@ async function resolveXPath(xpath, tabId, contextId, cdp) {
 async function resolveAria(spec, tabId, contextId, cdp) {
   // spec may be "Button Label" or "Button Label[role=button]"
   const roleMatch = spec.match(/\[role=["']?(\w+)["']?\]$/);
-  const role   = roleMatch ? roleMatch[1] : null;
-  const label  = spec.replace(/\[role=["']?\w+["']?\]$/, '').trim();
+  const role = roleMatch ? roleMatch[1] : null;
+  const label = spec.replace(/\[role=["']?\w+["']?\]$/, "").trim();
 
   const expr = `
     (function() {
@@ -229,7 +254,10 @@ async function resolvePierce(cssSelector, tabId, contextId, cdp) {
 // Each segment selects inside the previous element's shadow root.
 
 async function resolvePierceChain(selectorStr, tabId, contextId, cdp) {
-  const parts = selectorStr.split(' >>> ').map(s => s.trim()).filter(Boolean);
+  const parts = selectorStr
+    .split(" >>> ")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const expr = `
     (function() {
       const parts = ${JSON.stringify(parts)};
@@ -278,21 +306,24 @@ async function resolveText(text, tabId, contextId, cdp) {
 
 async function tryResolveCDPDom(selectorStr, tabId, cdp) {
   try {
-    const { root } = await cdp(tabId, 'DOM.getDocument', { depth: 1 });
-    const res = await cdp(tabId, 'DOM.querySelector', { nodeId: root.nodeId, selector: selectorStr });
+    const { root } = await cdp(tabId, "DOM.getDocument", { depth: 1 });
+    const res = await cdp(tabId, "DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector: selectorStr
+    });
     const nodeId = res?.nodeId;
     if (!nodeId) return null;
     // Resolve to a JS object so we can call getBoundingClientRect()
-    const resolved = await cdp(tabId, 'DOM.resolveNode', { nodeId });
+    const resolved = await cdp(tabId, "DOM.resolveNode", { nodeId });
     const objectId = resolved?.object?.objectId;
     if (!objectId) return null;
-    const boxRes = await cdp(tabId, 'Runtime.callFunctionOn', {
+    const boxRes = await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: `function() {
         const r = this.getBoundingClientRect();
         return { x: r.left, y: r.top, width: r.width, height: r.height };
       }`,
-      returnByValue: true,
+      returnByValue: true
     });
     return boxRes?.result?.value ?? null;
   } catch (_) {
@@ -306,10 +337,10 @@ async function evalExpr(expression, tabId, contextId, cdp) {
   const params = { expression, returnByValue: true };
   if (contextId) params.contextId = contextId;
 
-  const res = await cdp(tabId, 'Runtime.evaluate', params);
+  const res = await cdp(tabId, "Runtime.evaluate", params);
 
   if (res?.exceptionDetails) {
-    throw new Error(res.exceptionDetails.text || 'Runtime.evaluate exception');
+    throw new Error(res.exceptionDetails.text || "Runtime.evaluate exception");
   }
   const val = res?.result?.value;
   if (!val) return null;
@@ -319,5 +350,5 @@ async function evalExpr(expression, tabId, contextId, cdp) {
 // ── Utils ──────────────────────────────────────────────────────────────────────
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

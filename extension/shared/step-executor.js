@@ -2,7 +2,7 @@ import { resolveSelector, waitForSelector } from "./selector-resolver.js";
 import {
   NAV_TIMEOUT_MS,
   STEP_TIMEOUT_MS,
-  POLLING_DOMAINS,
+  POLLING_DOMAINS
 } from "./constants.js";
 
 /**
@@ -21,7 +21,7 @@ export async function executeStep(
   frameContextMap,
   clipboardVars,
   cdp,
-  variables = new Map(),
+  variables = new Map()
 ) {
   const contextId = resolveContext(step, frameContextMap);
 
@@ -56,7 +56,7 @@ export async function executeStep(
         tabId,
         contextId,
         clipboardVars,
-        cdp,
+        cdp
       );
     case "paste":
       return execPasteVariableAtRecording(
@@ -64,15 +64,15 @@ export async function executeStep(
         tabId,
         contextId,
         clipboardVars,
-        cdp,
+        cdp
       );
-    case "saveVariable":
+    case "copyVariable":
       return execCopyVariableAtReplaying(
         step,
         tabId,
         contextId,
         cdp,
-        variables,
+        variables
       );
     case "pasteVariable":
       return execPasteVariableAtReplaying(
@@ -80,14 +80,14 @@ export async function executeStep(
         tabId,
         contextId,
         cdp,
-        variables,
+        variables
       );
     case "wait":
       return sleep(Math.max(0, step.duration ?? 0));
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
       console.warn(
-        `[step-executor] Unknown step type: ${step.type} — skipping`,
+        `[step-executor] Unknown step type: ${step.type} — skipping`
       );
   }
 }
@@ -107,7 +107,7 @@ async function execSetViewport(step, tabId, cdp) {
     width: step.width ?? 1280,
     height: step.height ?? 720,
     deviceScaleFactor: step.deviceScaleFactor ?? 1,
-    mobile: step.isMobile ?? false,
+    mobile: step.isMobile ?? false
   });
 }
 
@@ -201,7 +201,7 @@ async function execClick(step, tabId, contextId, cdp) {
       step.selectors,
       tabId,
       contextId,
-      cdp,
+      cdp
     );
     cx = x + (step.offsetX ?? 0);
     cy = y + (step.offsetY ?? 0);
@@ -224,7 +224,7 @@ async function execClick(step, tabId, contextId, cdp) {
     await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: "function() { this.focus(); }",
-      returnByValue: true,
+      returnByValue: true
     }).catch(console.error);
   }
 
@@ -249,7 +249,7 @@ async function execClick(step, tabId, contextId, cdp) {
           }));
         });
       }`,
-      returnByValue: true,
+      returnByValue: true
     }).catch(console.error);
   }
 
@@ -276,7 +276,7 @@ async function execDoubleClick(step, tabId, contextId, cdp) {
       step.selectors,
       tabId,
       contextId,
-      cdp,
+      cdp
     );
     cx = x + (step.offsetX ?? 0);
     cy = y + (step.offsetY ?? 0);
@@ -306,7 +306,7 @@ async function execHover(step, tabId, contextId, cdp) {
       step.selectors,
       tabId,
       contextId,
-      cdp,
+      cdp
     );
     cx = x + (step.offsetX ?? 0);
     cy = y + (step.offsetY ?? 0);
@@ -322,14 +322,14 @@ async function execChange(step, tabId, contextId, cdp) {
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId)
     throw new Error(
-      `Could not resolve element for change step. Tried: ${JSON.stringify(step.selectors)}`,
+      `Could not resolve element for change step. Tried: ${JSON.stringify(step.selectors)}`
     );
 
   const tagRes = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration:
       'function() { return { tag: this.tagName, cls: this.className ?? "" }; }',
-    returnByValue: true,
+    returnByValue: true
   });
   const { tag: tagName = "", cls: className = "" } =
     tagRes?.result?.value ?? {};
@@ -376,19 +376,19 @@ async function execChange(step, tabId, contextId, cdp) {
         this.dispatchEvent(new Event('blur',   { bubbles: true }));
         this.blur();
       }`,
-      returnByValue: true,
+      returnByValue: true
     });
   } else {
     await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration:
         'function() { this.focus(); this.select(); this.value = ""; }',
-      returnByValue: true,
+      returnByValue: true
     });
 
     if (value) {
       await cdp(tabId, "Input.insertText", {
-        text: isAutocompleteInput ? value.slice(0, 10) : value,
+        text: isAutocompleteInput ? value.slice(0, 10) : value
       });
     }
 
@@ -399,7 +399,7 @@ async function execChange(step, tabId, contextId, cdp) {
         this.dispatchEvent(new Event('change', { bubbles: true }));
         this.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
       }`,
-      returnByValue: true,
+      returnByValue: true
     });
 
     await tryClickAutocompleteOption(value, tabId, contextId, cdp);
@@ -425,13 +425,13 @@ async function execSelectOption(step, tabId, contextId, cdp) {
     : step.selectors.map((s) => [s]);
   const selectFirst = [
     ...normalized.filter((c) => (c[0] ?? "").startsWith("select")),
-    ...normalized.filter((c) => !(c[0] ?? "").startsWith("select")),
+    ...normalized.filter((c) => !(c[0] ?? "").startsWith("select"))
   ];
 
   const objectId = await resolveObjectId(selectFirst, tabId, contextId, cdp);
   if (!objectId)
     throw new Error(
-      `selectOption: could not find select. Tried: ${JSON.stringify(selectFirst)}`,
+      `selectOption: could not find select. Tried: ${JSON.stringify(selectFirst)}`
     );
 
   await scrollIntoViewAndGetRect(objectId, tabId, cdp);
@@ -443,7 +443,7 @@ async function execSelectOption(step, tabId, contextId, cdp) {
     step.value,
     tabId,
     contextId,
-    cdp,
+    cdp
   );
   if (optCoords) {
     await dispatchMouse(
@@ -453,7 +453,7 @@ async function execSelectOption(step, tabId, contextId, cdp) {
       optCoords.y,
       "none",
       0,
-      cdp,
+      cdp
     );
     await sleep(50);
     await dispatchMouse(
@@ -463,7 +463,7 @@ async function execSelectOption(step, tabId, contextId, cdp) {
       optCoords.y,
       "left",
       1,
-      cdp,
+      cdp
     );
     await dispatchMouse(
       tabId,
@@ -472,7 +472,7 @@ async function execSelectOption(step, tabId, contextId, cdp) {
       optCoords.y,
       "left",
       1,
-      cdp,
+      cdp
     );
     return;
   }
@@ -512,12 +512,12 @@ async function execSelectOption(step, tabId, contextId, cdp) {
 
       return sel.value;
     }`,
-    returnByValue: true,
+    returnByValue: true
   });
   if (setRes?.exceptionDetails) {
     console.warn(
       `[selectOption] exception:`,
-      JSON.stringify(setRes.exceptionDetails),
+      JSON.stringify(setRes.exceptionDetails)
     );
   }
 }
@@ -533,7 +533,7 @@ async function findVisibleOptionCoords(
   value,
   tabId,
   contextId,
-  cdp,
+  cdp
 ) {
   const expr = `
     (function() {
@@ -609,7 +609,7 @@ async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
       })(${JSON.stringify(targetText)})
     `,
     contextId,
-    returnByValue: true,
+    returnByValue: true
   });
 
   const coords = result?.result?.value;
@@ -620,7 +620,7 @@ async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
     x: coords.x,
     y: coords.y,
     button: "none",
-    clickCount: 0,
+    clickCount: 0
   });
   await sleep(50);
   await cdp(tabId, "Input.dispatchMouseEvent", {
@@ -628,14 +628,14 @@ async function tryClickAutocompleteOption(targetText, tabId, contextId, cdp) {
     x: coords.x,
     y: coords.y,
     button: "left",
-    clickCount: 1,
+    clickCount: 1
   });
   await cdp(tabId, "Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x: coords.x,
     y: coords.y,
     button: "left",
-    clickCount: 1,
+    clickCount: 1
   });
 
   return true;
@@ -647,7 +647,7 @@ const KEY_MODIFIERS = {
   Alt: 1,
   Control: 2,
   Meta: 4,
-  Shift: 8,
+  Shift: 8
 };
 
 async function execKeyDown(step, tabId, cdp) {
@@ -655,7 +655,7 @@ async function execKeyDown(step, tabId, cdp) {
   await cdp(tabId, "Input.dispatchKeyEvent", {
     type: "keyDown",
     key: step.key,
-    modifiers,
+    modifiers
   });
 }
 
@@ -664,7 +664,7 @@ async function execKeyUp(step, tabId, cdp) {
   await cdp(tabId, "Input.dispatchKeyEvent", {
     type: "keyUp",
     key: step.key,
-    modifiers,
+    modifiers
   });
 }
 
@@ -693,7 +693,7 @@ async function execWaitForPageLoad(tabId, cdp) {
   while (Date.now() < deadline) {
     const res = await cdp(tabId, "Runtime.evaluate", {
       expression: "document.readyState",
-      returnByValue: true,
+      returnByValue: true
     });
     const state = res?.result?.value;
     if (state === "complete") return;
@@ -715,17 +715,17 @@ async function execScroll(step, tabId, contextId, cdp) {
         step.selectors,
         tabId,
         contextId,
-        cdp,
+        cdp
       );
       await dispatchMouse(tabId, "mouseWheel", x, y, "none", 0, cdp, {
         deltaX: step.x ?? 0,
-        deltaY: step.y ?? 0,
+        deltaY: step.y ?? 0
       });
       return;
     } catch (_) {}
   }
   await cdp(tabId, "Runtime.evaluate", {
-    expression: `window.scrollBy(${step.x ?? 0}, ${step.y ?? 0})`,
+    expression: `window.scrollBy(${step.x ?? 0}, ${step.y ?? 0})`
   });
 }
 
@@ -736,7 +736,7 @@ async function execCopyVariableAtRecording(
   tabId,
   contextId,
   clipboardVars,
-  cdp,
+  cdp
 ) {
   // Read directly from the recorded element — window.getSelection() is unreliable
   // at replay time (no human interaction) and can pick up stray selected text left
@@ -744,11 +744,11 @@ async function execCopyVariableAtRecording(
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   console.log(
     `[Copy] var="${step.variableName}" objectId=${objectId ? "found" : "NOT FOUND"} selectors=`,
-    JSON.stringify(step.selectors),
+    JSON.stringify(step.selectors)
   );
   if (!objectId)
     throw new Error(
-      `copy: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`,
+      `copy: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`
     );
 
   const res = await cdp(tabId, "Runtime.callFunctionOn", {
@@ -759,14 +759,14 @@ async function execCopyVariableAtRecording(
       }
       return this.textContent?.trim() ?? '';
     }`,
-    returnByValue: true,
+    returnByValue: true
   }).catch(console.error);
 
   const captured = res?.result?.value ?? "";
   console.log(`[Copy] var="${step.variableName}" captured="${captured}"`);
   if (!captured)
     throw new Error(
-      `copy: element found but value is empty for variable "${step.variableName}"`,
+      `copy: element found but value is empty for variable "${step.variableName}"`
     );
 
   clipboardVars.set(step.variableName, captured);
@@ -779,19 +779,19 @@ async function execPasteVariableAtRecording(
   tabId,
   contextId,
   clipboardVars,
-  cdp,
+  cdp
 ) {
   const textToPaste = clipboardVars.get(step.variableName);
   console.log(`[Paste] var="${step.variableName}" value="${textToPaste}"`);
   if (!textToPaste)
     throw new Error(
-      `paste: no runtime value found for variable "${step.variableName}" — make sure a copy step ran before this`,
+      `paste: no runtime value found for variable "${step.variableName}" — make sure a copy step ran before this`
     );
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId)
     throw new Error(
-      `Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`,
+      `Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`
     );
 
   await pasteTextIntoElement(objectId, textToPaste, tabId, cdp);
@@ -804,16 +804,16 @@ async function execCopyVariableAtReplaying(
   tabId,
   contextId,
   cdp,
-  variables,
+  variables
 ) {
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   console.log(
     `[CopyVariable] var="${step.variableName}" objectId=${objectId ? "found" : "NOT FOUND"} selectors=`,
-    JSON.stringify(step.selectors),
+    JSON.stringify(step.selectors)
   );
   if (!objectId)
     throw new Error(
-      `copyVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`,
+      `copyVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`
     );
 
   const res = await cdp(tabId, "Runtime.callFunctionOn", {
@@ -824,14 +824,14 @@ async function execCopyVariableAtReplaying(
       }
       return this.textContent?.trim() ?? '';
     }`,
-    returnByValue: true,
+    returnByValue: true
   });
 
   const value = res?.result?.value;
   console.log(`[CopyVariable] var="${step.variableName}" captured="${value}"`);
   if (!value)
     throw new Error(
-      `copyVariable: element found but value is empty for variable "${step.variableName}"`,
+      `copyVariable: element found but value is empty for variable "${step.variableName}"`
     );
 
   const suffix = variables.get("__replaySuffix__") ?? "";
@@ -847,23 +847,23 @@ async function execPasteVariableAtReplaying(
   tabId,
   contextId,
   cdp,
-  variables,
+  variables
 ) {
   const suffix = variables.get("__replaySuffix__") ?? "";
   const varKey = suffix ? `${step.variableName}-${suffix}` : step.variableName;
   const textToPaste = variables.get(varKey);
   console.log(
-    `[PasteVariable] var="${step.variableName}" key="${varKey}" value="${textToPaste}"`,
+    `[PasteVariable] var="${step.variableName}" key="${varKey}" value="${textToPaste}"`
   );
   if (!textToPaste)
     throw new Error(
-      `pasteVariable: no runtime value found for key "${varKey}" — make sure a copyVariable step ran before this`,
+      `pasteVariable: no runtime value found for key "${varKey}" — make sure a copyVariable step ran before this`
     );
 
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   if (!objectId)
     throw new Error(
-      `Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`,
+      `Could not resolve paste target. Tried: ${JSON.stringify(step.selectors)}`
     );
 
   await pasteTextIntoElement(objectId, textToPaste, tabId, cdp);
@@ -896,7 +896,7 @@ async function pasteTextIntoElement(objectId, textToPaste, tabId, cdp) {
     return cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: "function() { this.focus(); }",
-      returnByValue: true,
+      returnByValue: true
     }).catch(console.error);
   });
   await sleep(80);
@@ -905,7 +905,7 @@ async function pasteTextIntoElement(objectId, textToPaste, tabId, cdp) {
   await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration: 'function() { this.select(); this.value = ""; }',
-    returnByValue: true,
+    returnByValue: true
   }).catch(console.error);
 
   // 4. Insert text — works because DOM.focus gave the element real keyboard focus.
@@ -923,7 +923,7 @@ async function pasteTextIntoElement(objectId, textToPaste, tabId, cdp) {
       this.dispatchEvent(new KeyboardEvent('keyup',   { bubbles: true, cancelable: true }));
     }`,
     arguments: [{ value: textToPaste }],
-    returnByValue: true,
+    returnByValue: true
   });
 }
 
@@ -1024,7 +1024,7 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
       const { root } = await cdp(tabId, "DOM.getDocument", { depth: 1 });
       const res = await cdp(tabId, "DOM.querySelector", {
         nodeId: root.nodeId,
-        selector: sel,
+        selector: sel
       });
       const nodeId = res?.nodeId;
       if (!nodeId) continue;
@@ -1045,7 +1045,7 @@ async function dispatchMouse(
   button,
   clickCount,
   cdp,
-  extra = {},
+  extra = {}
 ) {
   await cdp(tabId, "Input.dispatchMouseEvent", {
     type,
@@ -1053,7 +1053,7 @@ async function dispatchMouse(
     y,
     button,
     clickCount,
-    ...extra,
+    ...extra
   });
 }
 
@@ -1067,7 +1067,7 @@ async function scrollIntoViewAndGetRect(objectId, tabId, cdp) {
     objectId,
     functionDeclaration:
       'function() { this.scrollIntoView({ behavior: "instant", block: "center", inline: "center" }); }',
-    returnByValue: true,
+    returnByValue: true
   }).catch(console.error);
   // Brief settle after scroll so the viewport position stabilises
   await sleep(100);
@@ -1075,7 +1075,7 @@ async function scrollIntoViewAndGetRect(objectId, tabId, cdp) {
     objectId,
     functionDeclaration:
       "function() { const r = this.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }",
-    returnByValue: true,
+    returnByValue: true
   }).catch(console.error);
   return res?.result?.value ?? null;
 }
@@ -1097,7 +1097,7 @@ async function waitForOption(
   tabId,
   contextId,
   cdp,
-  timeoutMs = STEP_TIMEOUT_MS,
+  timeoutMs = STEP_TIMEOUT_MS
 ) {
   const deadline = Date.now() + timeoutMs;
   let consecutiveErrors = 0;
@@ -1108,7 +1108,7 @@ async function waitForOption(
     ? selectors
     : selectors.map((s) => [s]);
   const cssSel = normalized.find(
-    (c) => c[0] && !c[0].includes("/") && !c[0].includes(" >>> "),
+    (c) => c[0] && !c[0].includes("/") && !c[0].includes(" >>> ")
   )?.[0];
   const getEl = cssSel
     ? cssSel.startsWith("#")
@@ -1130,13 +1130,13 @@ async function waitForOption(
       if (contextId) params.contextId = contextId;
 
       const res = await cdp(tabId, "Runtime.evaluate", params).catch(
-        console.error,
+        console.error
       );
       if (res === null) {
         // CDP rejected — debugger likely detached
         if (++consecutiveErrors >= 6)
           throw new Error(
-            `Debugger detached while waiting for <select> option "${targetValue}"`,
+            `Debugger detached while waiting for <select> option "${targetValue}"`
           );
       } else {
         consecutiveErrors = 0;
@@ -1148,14 +1148,14 @@ async function waitForOption(
       if (!freshId) {
         if (++consecutiveErrors >= 6)
           throw new Error(
-            `Debugger detached while waiting for <select> option "${targetValue}"`,
+            `Debugger detached while waiting for <select> option "${targetValue}"`
           );
       } else {
         consecutiveErrors = 0;
         const res = await cdp(tabId, "Runtime.callFunctionOn", {
           objectId: freshId,
           functionDeclaration: `function(){ return [...(this.options||[])].some(o=>o.value===${targetStr}); }`,
-          returnByValue: true,
+          returnByValue: true
         }).catch(console.error);
         found = res?.result?.value === true;
       }

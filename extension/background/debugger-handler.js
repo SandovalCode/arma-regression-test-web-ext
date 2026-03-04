@@ -1,8 +1,8 @@
-import { replayState, frameContextMap } from './state.js';
+import { replayState, frameContextMap } from "./state.js";
 
 // ── Debugger event listener ────────────────────────────────────────────────────
 chrome.debugger.onEvent.addListener((_source, method, params) => {
-  if (method === 'Runtime.executionContextCreated') {
+  if (method === "Runtime.executionContextCreated") {
     const ctx = params.context;
     if (ctx.auxData?.frameId) {
       frameContextMap.set(ctx.auxData.frameId, ctx.id);
@@ -15,7 +15,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 
   console.warn(`[Replay] Debugger detached — reason: "${reason}"`);
 
-  if (reason === 'canceled_by_user') {
+  if (reason === "canceled_by_user") {
     replayState.aborted = true;
     return;
   }
@@ -41,7 +41,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
       await new Promise((resolve) => {
         const giveUpTimer = setTimeout(() => {
           chrome.tabs.onUpdated.removeListener(onUpdated);
-          console.warn('[Replay] Re-attach timed out (45s) — aborting');
+          console.warn("[Replay] Re-attach timed out (45s) — aborting");
           replayState.aborted = true;
           resolve();
         }, 45_000);
@@ -51,23 +51,23 @@ chrome.debugger.onDetach.addListener((source, reason) => {
           attaching = true;
           try {
             const tab = await chrome.tabs.get(tabId).catch(console.error);
-            const url = tab?.url ?? '';
-            if (!url.startsWith('https://') && !url.startsWith('http://')) {
+            const url = tab?.url ?? "";
+            if (!url.startsWith("https://") && !url.startsWith("http://")) {
               attaching = false;
               return; // tab is still on an internal/extension URL — wait for next update
             }
-            await chrome.debugger.attach({ tabId }, '1.3');
-            await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
-            await chrome.debugger.sendCommand({ tabId }, 'Page.enable');
+            await chrome.debugger.attach({ tabId }, "1.3");
+            await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
+            await chrome.debugger.sendCommand({ tabId }, "Page.enable");
             frameContextMap.clear();
-            console.log('[Replay] Debugger re-attached successfully');
+            console.log("[Replay] Debugger re-attached successfully");
             clearTimeout(giveUpTimer);
             chrome.tabs.onUpdated.removeListener(onUpdated);
             resolve();
           } catch (err) {
             attaching = false;
-            if (err.message?.includes('already attached')) {
-              console.log('[Replay] Debugger already re-attached by Chrome');
+            if (err.message?.includes("already attached")) {
+              console.log("[Replay] Debugger already re-attached by Chrome");
               frameContextMap.clear();
               clearTimeout(giveUpTimer);
               chrome.tabs.onUpdated.removeListener(onUpdated);
@@ -76,7 +76,9 @@ chrome.debugger.onDetach.addListener((source, reason) => {
             }
             // Attach failed (tab may be mid-SSO or renderer not ready yet).
             // Don't abort — wait for the next onUpdated event to try again.
-            console.log(`[Replay] Re-attach attempt failed: ${err.message} — waiting for tab update…`);
+            console.log(
+              `[Replay] Re-attach attempt failed: ${err.message} — waiting for tab update…`
+            );
           }
         }
 
