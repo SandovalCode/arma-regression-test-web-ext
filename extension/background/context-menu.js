@@ -81,7 +81,7 @@ chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
     // Collect saved variables with their defaultValues so the sidepanel can
     // both display them and embed a fallback value in the recorded step.
     const availableVars = recordingState.steps
-      .filter((s) => s.type === "saveVariable")
+      .filter((s) => s.type === "copyVariable")
       .map((s) => ({
         name: s.variableName,
         defaultValue: s.defaultValue ?? ""
