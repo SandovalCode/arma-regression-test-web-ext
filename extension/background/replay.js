@@ -10,50 +10,6 @@ import {
 import { cdp, broadcast, getStepDetail } from "./utils.js";
 import { startKeepalive, stopKeepalive } from "./keepalive.js";
 
-// ── Salesforce error dialog auto-dismisser ──────────────────────────────────────
-// Injects a MutationObserver into the page that watches for Salesforce's
-// "Sorry to interrupt" error modal and removes it from the DOM automatically.
-// Must be called after each page navigation since navigations destroy the observer.
-async function injectErrorDismisser(tabId) {
-  try {
-    await cdp(tabId, "Runtime.evaluate", {
-      expression: `(function () {
-  if (window.__sfErrorDismisserActive) return;
-  window.__sfErrorDismisserActive = true;
-  const observer = new MutationObserver(mutations => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== 1) continue;
-        const dialog = node.matches('div[role="dialog"].slds-modal--prompt')
-          ? node
-          : node.querySelector('div[role="dialog"].slds-modal--prompt');
-        if (!dialog) continue;
-        const h1 = dialog.querySelector('h1');
-        if (!h1 || !h1.textContent.includes('Sorry to interrupt')) continue;
-        console.error('🔥 [TestRecorder] Salesforce error dialog detected — removing from DOM');
-        // Defer removal outside the MutationObserver callback.
-        setTimeout(() => {
-          dialog.remove();
-          const backdrop = document.querySelector('.slds-backdrop, .modal-backdrop');
-          if (backdrop) backdrop.remove();
-          // Dispatch Escape so Aura clears any aria-hidden/modal-open state it set
-          // when the dialog opened — bypasses the inconsistent state that results
-          // from removing the node directly without going through Aura's close handler.
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
-          document.dispatchEvent(new KeyboardEvent('keyup',   { key: 'Escape', keyCode: 27, bubbles: true }));
-        }, 0);
-      }
-    }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-})();`,
-      awaitPromise: false
-    });
-  } catch (err) {
-    console.warn("[Replay] Could not inject error dismisser:", err.message);
-  }
-}
-
 // ── Replay ─────────────────────────────────────────────────────────────────────
 export async function runRecording(recording, tabId) {
   if (replayState.active) return; // prevent concurrent runs
@@ -95,7 +51,34 @@ export async function runRecording(recording, tabId) {
     // Enable CDP domains
     await cdp(tabId, "Runtime.enable");
     await cdp(tabId, "Page.enable");
-    await injectErrorDismisser(tabId);
+
+    // CDP presence causes the browser to emit PerformanceObserver entry types
+    // that Salesforce Lightning's O11Y system doesn't recognise (internal enum value 2),
+    // which throws "Unsupported WebVital metrics: [2]" and shows the "Sorry to interrupt"
+    // error dialog. Injecting this shim before any page script runs makes PerformanceObserver
+    // silently filter those entries out, so Salesforce's code never sees them.
+    await cdp(tabId, "Page.addScriptToEvaluateOnNewDocument", {
+      source: `(function () {
+  const _NativePO = window.PerformanceObserver;
+  const _SUPPORTED = new Set([
+    "element","event","first-input","largest-contentful-paint",
+    "layout-shift","longtask","mark","measure","navigation",
+    "paint","resource","visibility-state"
+  ]);
+  window.PerformanceObserver = function (cb) {
+    const wrapped = new _NativePO(list => {
+      const entries = list.getEntries().filter(e => _SUPPORTED.has(e.entryType));
+      if (entries.length === 0) return;
+      cb({ getEntries: () => entries, getEntriesByType: t => entries.filter(e => e.entryType === t), getEntriesByName: (n, t) => entries.filter(e => e.name === n && (!t || e.entryType === t)) });
+    });
+    this._inner = wrapped;
+  };
+  window.PerformanceObserver.prototype.observe    = function (o) { return this._inner.observe(o); };
+  window.PerformanceObserver.prototype.disconnect = function ()  { return this._inner.disconnect(); };
+  window.PerformanceObserver.prototype.takeRecords = function () { return this._inner.takeRecords().filter(e => _SUPPORTED.has(e.entryType)); };
+  window.PerformanceObserver.supportedEntryTypes  = _NativePO.supportedEntryTypes;
+})();`
+    });
 
     for (let i = 0; i < recording.steps.length; i++) {
       // If the debugger was detached by a cross-origin navigation, wait for
@@ -242,8 +225,7 @@ export async function runRecording(recording, tabId) {
                 err.message
               )
             );
-            // Re-inject the error dismisser after navigation (page load destroys the observer).
-            await injectErrorDismisser(tabId);
+
           }
         }
 

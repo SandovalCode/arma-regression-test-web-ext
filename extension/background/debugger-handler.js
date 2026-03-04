@@ -59,6 +59,28 @@ chrome.debugger.onDetach.addListener((source, reason) => {
             await chrome.debugger.attach({ tabId }, "1.3");
             await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
             await chrome.debugger.sendCommand({ tabId }, "Page.enable");
+            await chrome.debugger.sendCommand({ tabId }, "Page.addScriptToEvaluateOnNewDocument", {
+              source: `(function () {
+  const _NativePO = window.PerformanceObserver;
+  const _SUPPORTED = new Set([
+    "element","event","first-input","largest-contentful-paint",
+    "layout-shift","longtask","mark","measure","navigation",
+    "paint","resource","visibility-state"
+  ]);
+  window.PerformanceObserver = function (cb) {
+    const wrapped = new _NativePO(list => {
+      const entries = list.getEntries().filter(e => _SUPPORTED.has(e.entryType));
+      if (entries.length === 0) return;
+      cb({ getEntries: () => entries, getEntriesByType: t => entries.filter(e => e.entryType === t), getEntriesByName: (n, t) => entries.filter(e => e.name === n && (!t || e.entryType === t)) });
+    });
+    this._inner = wrapped;
+  };
+  window.PerformanceObserver.prototype.observe    = function (o) { return this._inner.observe(o); };
+  window.PerformanceObserver.prototype.disconnect = function ()  { return this._inner.disconnect(); };
+  window.PerformanceObserver.prototype.takeRecords = function () { return this._inner.takeRecords().filter(e => _SUPPORTED.has(e.entryType)); };
+  window.PerformanceObserver.supportedEntryTypes  = _NativePO.supportedEntryTypes;
+})();`
+            });
             frameContextMap.clear();
             console.log("[Replay] Debugger re-attached successfully");
             clearTimeout(giveUpTimer);

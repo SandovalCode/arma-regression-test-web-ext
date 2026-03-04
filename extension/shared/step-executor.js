@@ -218,8 +218,16 @@ async function execClick(step, tabId, contextId, cdp) {
   // mouseenter, and the click must arrive after that handler completes.
   await sleep(80);
 
-  // Explicitly focus the element before pressing — mirrors what a real click does:
-  // blur fires on the previously focused element, focus fires on this one.
+  // Mirrors what a real click does: blur fires on the previously focused element
+  // first, then focus fires on the new one. Without the explicit blur, Salesforce
+  // dialogs (e.g. the search assistant panel) can receive aria-hidden="true" while
+  // the old focused element is still inside them, triggering O11Y errors and the
+  // "Sorry to interrupt" dialog.
+  await cdp(tabId, "Runtime.evaluate", {
+    expression: "document.activeElement && document.activeElement !== document.body ? document.activeElement.blur() : undefined",
+    returnByValue: true
+  }).catch(console.error);
+
   if (objectId) {
     await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
@@ -328,10 +336,10 @@ async function execChange(step, tabId, contextId, cdp) {
   const tagRes = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration:
-      'function() { return { tag: this.tagName, cls: this.className ?? "" }; }',
+      'function() { return { tag: this.tagName, cls: this.className ?? "", inputType: this.type ?? "" }; }',
     returnByValue: true
   });
-  const { tag: tagName = "", cls: className = "" } =
+  const { tag: tagName = "", cls: className = "", inputType = "" } =
     tagRes?.result?.value ?? {};
 
   // A step recorded from a <select> always has step.label set
@@ -341,6 +349,13 @@ async function execChange(step, tabId, contextId, cdp) {
   // to trigger their AJAX dropdown, then a click on the matching result.
   // All other inputs get the full value inserted directly.
   const isAutocompleteInput = className.split(/\s+/).includes("autocomplete");
+
+  // Search inputs (type="search") drive a live search panel that must remain open
+  // for the next step to click a result. Dispatching blur or change causes the panel
+  // to dismiss with aria-hidden while focus is still inside, triggering Salesforce's
+  // O11Y error dialog. For these inputs, only fire 'input' to trigger the search
+  // reactivity and leave the panel open — the subsequent click step closes it naturally.
+  const isSearchInput = inputType === "search";
 
   if (isSelectStep) {
     // Wait for the target option to exist — selects may load options via AJAX
@@ -392,15 +407,31 @@ async function execChange(step, tabId, contextId, cdp) {
       });
     }
 
-    await cdp(tabId, "Runtime.callFunctionOn", {
-      objectId,
-      functionDeclaration: `function() {
-        this.dispatchEvent(new Event('input',  { bubbles: true }));
-        this.dispatchEvent(new Event('change', { bubbles: true }));
-        this.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-      }`,
-      returnByValue: true
-    });
+    if (isSearchInput) {
+      // Search inputs drive a live results panel that must stay open for a
+      // subsequent click step. blur() + change cause Salesforce to dismiss the
+      // panel (aria-hidden while focused → O11Y error). Only fire 'input' to
+      // trigger reactivity; the click on the result closes the panel naturally.
+      await cdp(tabId, "Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function() {
+          this.dispatchEvent(new Event('input', { bubbles: true }));
+        }`,
+        returnByValue: true
+      });
+    } else {
+      // Fire 'input' first (value changed), then blur, then 'change'.
+      // This matches real browser event order: input → blur → change.
+      await cdp(tabId, "Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function() {
+          this.dispatchEvent(new Event('input', { bubbles: true }));
+          this.blur();
+          this.dispatchEvent(new Event('change', { bubbles: true }));
+        }`,
+        returnByValue: true
+      });
+    }
 
     await tryClickAutocompleteOption(value, tabId, contextId, cdp);
   }
