@@ -224,7 +224,8 @@ async function execClick(step, tabId, contextId, cdp) {
   // the old focused element is still inside them, triggering O11Y errors and the
   // "Sorry to interrupt" dialog.
   await cdp(tabId, "Runtime.evaluate", {
-    expression: "document.activeElement && document.activeElement !== document.body ? document.activeElement.blur() : undefined",
+    expression:
+      "document.activeElement && document.activeElement !== document.body ? document.activeElement.blur() : undefined",
     returnByValue: true
   }).catch(console.error);
 
@@ -339,8 +340,11 @@ async function execChange(step, tabId, contextId, cdp) {
       'function() { return { tag: this.tagName, cls: this.className ?? "", inputType: this.type ?? "" }; }',
     returnByValue: true
   });
-  const { tag: tagName = "", cls: className = "", inputType = "" } =
-    tagRes?.result?.value ?? {};
+  const {
+    tag: tagName = "",
+    cls: className = "",
+    inputType = ""
+  } = tagRes?.result?.value ?? {};
 
   // A step recorded from a <select> always has step.label set
   const isSelectStep = tagName === "SELECT" || step.label !== undefined;
@@ -408,6 +412,7 @@ async function execChange(step, tabId, contextId, cdp) {
     }
 
     if (isSearchInput) {
+      console.log("🔥 Search input, for salesforce");
       // Search inputs drive a live results panel that must stay open for a
       // subsequent click step. blur() + change cause Salesforce to dismiss the
       // panel (aria-hidden while focused → O11Y error). Only fire 'input' to
@@ -419,9 +424,25 @@ async function execChange(step, tabId, contextId, cdp) {
         }`,
         returnByValue: true
       });
+    } else if (isAutocompleteInput) {
+      console.log("🚗 Search input, for Valex");
+      // Avalex-style autocomplete (class contains "autocomplete"): fire input + change +
+      // keydown to trigger the AJAX dropdown, then tryClickAutocompleteOption clicks the
+      // result. Must NOT blur before tryClickAutocompleteOption — blur closes the dropdown.
+      await cdp(tabId, "Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function() {
+          this.dispatchEvent(new Event('input',  { bubbles: true }));
+          this.dispatchEvent(new Event('change', { bubbles: true }));
+          this.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+        }`,
+        returnByValue: true
+      });
     } else {
-      // Fire 'input' first (value changed), then blur, then 'change'.
-      // This matches real browser event order: input → blur → change.
+      // Regular inputs: blur before change matches real browser event order
+      // (input → blur → change). Without blur first, frameworks like Salesforce Aura/LWC
+      // dismiss overlays with aria-hidden while the input is still focused, triggering
+      // O11Y errors and the "Sorry to interrupt" dialog.
       await cdp(tabId, "Runtime.callFunctionOn", {
         objectId,
         functionDeclaration: `function() {
@@ -431,8 +452,8 @@ async function execChange(step, tabId, contextId, cdp) {
         }`,
         returnByValue: true
       });
+      console.log("💾  Otros inputs");
     }
-
     await tryClickAutocompleteOption(value, tabId, contextId, cdp);
   }
 }
@@ -944,12 +965,18 @@ async function pasteTextIntoElement(objectId, textToPaste, tabId, cdp) {
 
   // 5. Ensure value is set and fire all relevant events so search/autocomplete
   //    listeners (input, change, keydown) pick up the new value.
+  //    For type="search" inputs (e.g. Salesforce LWC global search), dispatching
+  //    'change' dismisses the results panel (aria-hidden while focused → O11Y error).
+  //    Only fire 'input' for those, same as execChange's isSearchInput handling.
   await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration: `function(v) {
       if (this.value !== v) this.value = v;
-      this.dispatchEvent(new Event('input',  { bubbles: true }));
-      this.dispatchEvent(new Event('change', { bubbles: true }));
+      const isSearch = this.type === 'search';
+      this.dispatchEvent(new Event('input', { bubbles: true }));
+      if (!isSearch) {
+        this.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       this.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true }));
       this.dispatchEvent(new KeyboardEvent('keyup',   { bubbles: true, cancelable: true }));
     }`,

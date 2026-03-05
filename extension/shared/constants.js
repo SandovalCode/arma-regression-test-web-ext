@@ -30,7 +30,13 @@ export const MSG = {
   RECORDING_STATE: "RECORDING_STATE", // recording started/stopped confirmation
   SHOW_VARIABLE_DIALOG: "SHOW_VARIABLE_DIALOG", // SW → sidepanel: open the save-variable dialog
   SHOW_PASTE_VARIABLE_DIALOG: "SHOW_PASTE_VARIABLE_DIALOG", // SW → sidepanel: open the paste-variable dialog
-  SHOW_WAIT_DIALOG: "SHOW_WAIT_DIALOG" // SW → sidepanel: open the wait-for-time dialog
+  SHOW_WAIT_DIALOG: "SHOW_WAIT_DIALOG", // SW → sidepanel: open the wait-for-time dialog
+
+  // Step debugger
+  DEBUG_PAUSE: "DEBUG_PAUSE",              // SW → sidepanel: replay paused at a debug step
+  DEBUG_NEXT: "DEBUG_NEXT",               // sidepanel → SW: continue one step then pause again
+  DEBUG_FINISH: "DEBUG_FINISH",           // sidepanel → SW: stop pausing at debug steps
+  SET_DYNAMIC_BREAKPOINT: "SET_DYNAMIC_BREAKPOINT" // sidepanel → SW: pause after step N
 };
 
 export const StepStatus = {

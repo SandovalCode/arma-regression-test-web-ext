@@ -8,7 +8,11 @@ export const recordingState = {
 export const replayState = {
   active: false,
   aborted: false,
-  tabId: null
+  tabId: null,
+  debugResolve: null,      // set while paused at a debug step; call to resume
+  debugFinished: false,    // true after user clicks "Finish debugging"
+  stepOnce: false,         // pause after the very next step (set by DEBUG_NEXT)
+  dynamicBreakpoints: new Set() // step indices set via the hover pause button
 };
 
 // Clipboard variables that survive cross-site navigation during a run

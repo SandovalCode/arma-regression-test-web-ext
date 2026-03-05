@@ -11,15 +11,19 @@ import { cdp, broadcast, getStepDetail } from "./utils.js";
 import { startKeepalive, stopKeepalive } from "./keepalive.js";
 
 // ── Replay ─────────────────────────────────────────────────────────────────────
-export async function runRecording(recording, tabId) {
+export async function runRecording(recording, tabId, stepDelay) {
   if (replayState.active) return; // prevent concurrent runs
 
   Object.assign(replayState, {
     active: true,
     aborted: false,
     tabId,
-    reattachPromise: null
+    reattachPromise: null,
+    debugResolve: null,
+    debugFinished: false,
+    stepOnce: false
   });
+  replayState.dynamicBreakpoints.clear();
   clipboardVars.clear();
   variables.clear();
   frameContextMap.clear();
@@ -229,7 +233,26 @@ export async function runRecording(recording, tabId) {
           }
         }
 
-        await new Promise((r) => setTimeout(r, 50)); // 50 ms gap between actions
+        await new Promise((r) => setTimeout(r, stepDelay ?? 50)); // gap between actions
+
+        // Debug breakpoint: pause after this step if flagged, dynamically set, or step-once
+        const shouldPause =
+          !replayState.debugFinished &&
+          !replayState.aborted &&
+          (step.debug || replayState.stepOnce || replayState.dynamicBreakpoints.has(i));
+        if (shouldPause) {
+          replayState.stepOnce = false;
+          replayState.dynamicBreakpoints.delete(i);
+          broadcast(MSG.DEBUG_PAUSE, {
+            stepIndex: i,
+            total: recording.steps.length,
+            stepType: step.type
+          });
+          await new Promise((resolve) => {
+            replayState.debugResolve = resolve;
+          });
+          replayState.debugResolve = null;
+        }
 
         const durationMs = Date.now() - stepStart;
         stepResults.push({
@@ -336,7 +359,7 @@ export async function runRecording(recording, tabId) {
   }
 }
 
-export async function runAll(tabId) {
+export async function runAll(tabId, stepDelay) {
   const recordings = await getRecordings();
   if (recordings.length === 0) return;
 
@@ -348,10 +371,11 @@ export async function runAll(tabId) {
     broadcast(MSG.BATCH_PROGRESS, {
       current: i + 1,
       total: recordings.length,
+      recordingId: recordings[i].id,
       recordingTitle: recordings[i].title
     });
 
-    const result = await runRecording(recordings[i], tabId);
+    const result = await runRecording(recordings[i], tabId, stepDelay);
     results.push({
       recordingId: recordings[i].id,
       title: recordings[i].title,

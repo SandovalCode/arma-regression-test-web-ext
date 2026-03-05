@@ -55,11 +55,12 @@ body {
 hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 12px 0;
+  margin: 6px 0;
 }
 
 /* ── Header ── */
 header {
+  position: relative;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -72,57 +73,126 @@ header h1 {
   letter-spacing: 0.01em;
 }
 
-/* ── Header actions (reset + theme toggle) ── */
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ── Theme toggle ── */
-.theme-toggle {
+/* ── Hamburger button ── */
+.btn-hamburger {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 6px;
   cursor: pointer;
-  padding: 3px 8px;
-  font-size: 14px;
+  padding: 4px 9px;
+  font-size: 16px;
   line-height: 1;
   color: var(--muted);
-  transition:
-    border-color 0.15s,
-    color 0.15s;
+  transition: border-color 0.15s, color 0.15s;
 }
-.theme-toggle:hover {
+.btn-hamburger:hover {
   border-color: var(--muted);
   color: var(--text);
 }
 
-/* ── Reset button ── */
-#btn-reset {
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 20px;
-  cursor: pointer;
-  padding: 3px 7px;
-  font-size: 15px;
-  line-height: 1;
-  color: var(--muted);
-  opacity: 1;
-  transition:
-    border-color 0.15s,
-    color 0.15s,
-    transform 0.2s;
+/* ── Hamburger dropdown menu ── */
+.hamburger-menu {
+  position: absolute;
+  top: 42px;
+  right: 12px;
+  z-index: 200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  min-width: 200px;
 }
-#btn-reset:hover {
-  border-color: var(--border);
+.hamburger-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.hamburger-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+.hamburger-slower-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Hamburger menu buttons ── */
+.hm-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.hm-btn:hover {
+  border-color: var(--muted);
   color: var(--text);
-  transform: rotate(-30deg);
+}
+
+/* ── Hamburger site nav badges ── */
+.hm-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  transition: opacity 0.15s, transform 0.15s;
+  flex-shrink: 0;
+}
+.hm-badge:hover {
+  opacity: 0.75;
+  transform: scale(1.1);
+}
+.hm-badge--a { border-color: #384f5f; }
+.hm-badge--v { border-color: #E03C31; }
+
+/* ── Speed badges ── */
+.speed-badge {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.speed-badge:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.speed-badge.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 /* ── Sections ── */
 section {
-  padding: 12px 16px;
+  padding: 8px 16px;
 }
 
 /* ── Buttons ── */
@@ -361,6 +431,17 @@ input[type="text"]::placeholder {
   flex-direction: column;
   gap: 8px;
 }
+#recordings-list.is-running {
+  flex-direction: row;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x mandatory;
+}
+
+/* Hide the hr separator when the record section is collapsed */
+#record-section.hidden + hr {
+  display: none;
+}
 
 /* ── Recording Card ── */
 .recording-card {
@@ -368,6 +449,15 @@ input[type="text"]::placeholder {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 12px;
+}
+#recordings-list.is-running .recording-card {
+  min-width: 220px;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
+.recording-card.card-running {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.08);
 }
 .recording-card-header {
   display: flex;
@@ -598,6 +688,10 @@ input[type="text"]::placeholder {
 /* ── Edit Overlay ── */
 .dialog-wide {
   width: min(1000px, max(70%, 400px));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .edit-label {
@@ -615,7 +709,7 @@ input[type="text"]::placeholder {
 }
 .edit-steps-list {
   list-style: none;
-  max-height: 200px;
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -732,6 +826,98 @@ input[type="text"]::placeholder {
 .wait-unit {
   font-size: 13px;
   color: var(--muted);
+}
+
+/* ── Pause button on run-progress step items ── */
+.btn-pause-step {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.step-item:hover .btn-pause-step {
+  display: flex;
+}
+.btn-pause-step.active {
+  display: flex;
+  color: var(--yellow);
+}
+.btn-pause-step:hover {
+  color: var(--yellow);
+}
+
+/* ── Step debugger button (inside edit overlay) ── */
+.btn-debug-step {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.btn-debug-step:hover {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+.btn-debug-step.active {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+/* ── Floating debug panel ── */
+.debug-panel {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  background: var(--surface);
+  border: 1px solid var(--yellow);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+.debug-panel-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--yellow);
+}
+.debug-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--yellow);
+  animation: pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.debug-panel-actions {
+  display: flex;
+  gap: 6px;
 }
 
 /* ── Overlay / Dialog ── */

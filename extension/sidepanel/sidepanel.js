@@ -5,7 +5,8 @@ let state = {
   mode: RecordingState.IDLE, // 'idle' | 'recording' | 'replaying'
   recordingStepCount: 0,
   currentRunSteps: [],
-  recordings: []
+  recordings: [],
+  dynamicBreakpoints: new Set() // step indices the user has pinned via the hover ⏸ button
 };
 
 let editingRecording = null; // { id, title, steps, createdAt }
@@ -15,6 +16,7 @@ let pendingPasteVariableStep = null; // { selectors, frame, variables } — from
 // ── DOM refs ───────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 
+const recordSection = $("record-section");
 const recordIdle = $("record-idle");
 const recordActive = $("record-active");
 const btnStartRecord = $("btn-start-record");
@@ -40,6 +42,15 @@ const btnDialogSave = $("btn-dialog-save");
 const btnDialogCancel = $("btn-dialog-cancel");
 const btnTheme = $("btn-theme");
 const btnReset = $("btn-reset");
+const btnNavA = $("btn-nav-a");
+const btnNavV = $("btn-nav-v");
+const btnHamburger = $("btn-hamburger");
+const hamburgerMenu = $("hamburger-menu");
+const speedBadges = document.querySelectorAll(".speed-badge");
+const debugPanel = $("debug-panel");
+const debugPanelText = $("debug-panel-text");
+const btnDebugNext = $("btn-debug-next");
+const btnDebugFinish = $("btn-debug-finish");
 const editOverlay = $("edit-overlay");
 const editTitleInput = $("edit-title");
 const editStepsList = $("edit-steps-list");
@@ -74,6 +85,46 @@ btnTheme.addEventListener("click", () => {
   const isLight = document.documentElement.classList.toggle("light");
   btnTheme.textContent = isLight ? "🌙" : "☀️";
   localStorage.setItem("theme", isLight ? "light" : "dark");
+});
+
+// ── Hamburger menu ─────────────────────────────────────────────────────────────
+btnHamburger.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const open = hamburgerMenu.classList.toggle("hidden");
+  btnHamburger.setAttribute("aria-expanded", String(!open));
+});
+
+document.addEventListener("click", (e) => {
+  if (!hamburgerMenu.classList.contains("hidden") && !hamburgerMenu.contains(e.target)) {
+    hamburgerMenu.classList.add("hidden");
+    btnHamburger.setAttribute("aria-expanded", "false");
+  }
+});
+
+// ── Step delay (speed badges) ──────────────────────────────────────────────────
+let stepDelay = parseInt(localStorage.getItem("stepDelay") ?? "0", 10) || 0;
+
+function applySpeedBadge(delayMs) {
+  speedBadges.forEach((b) => {
+    b.classList.toggle("active", Number(b.dataset.delay) === delayMs);
+  });
+}
+
+applySpeedBadge(stepDelay);
+
+speedBadges.forEach((badge) => {
+  badge.addEventListener("click", () => {
+    const value = Number(badge.dataset.delay);
+    if (stepDelay === value) {
+      // clicking the active badge deselects it (revert to default speed)
+      stepDelay = 0;
+      localStorage.removeItem("stepDelay");
+    } else {
+      stepDelay = value;
+      localStorage.setItem("stepDelay", String(stepDelay));
+    }
+    applySpeedBadge(stepDelay);
+  });
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -189,12 +240,14 @@ function addOrUpdateStep({
   const dur =
     countdown != null ? `${countdown}s` : durationMs ? `${durationMs}ms` : "";
 
+  const isBreakpoint = state.dynamicBreakpoints.has(stepIndex);
   li.className = `step-item ${status}`;
   li.innerHTML = `
     <span class="step-num">${stepIndex + 1}</span>
     <span class="step-icon">${icons[status] ?? "·"}</span>
     <span class="step-label">${stepType ?? ""}${stepDetail ? `<span class="step-detail"> ${escapeHtml(stepDetail)}</span>` : ""}</span>
     <span class="step-duration">${dur}</span>
+    <button class="btn-pause-step${isBreakpoint ? " active" : ""}" data-step="${stepIndex}" title="Pause after this step">⏸</button>
     ${error ? `<div class="step-error">${escapeHtml(error)}</div>` : ""}
   `;
 
@@ -210,18 +263,33 @@ function setMode(mode) {
   const isRecording = mode === RecordingState.RECORDING;
   const isReplaying = mode === RecordingState.REPLAYING;
 
-  // record area
+  // record area — hide entire section (+ hr) when replaying to save space
+  recordSection.classList.toggle("hidden", isReplaying);
   recordIdle.classList.toggle("hidden", !isIdle);
   recordActive.classList.toggle("hidden", !isRecording);
+
+  // horizontal card layout only while replaying
+  recordingsList.classList.toggle("is-running", isReplaying);
 
   // run section
   if (!isReplaying) {
     runSection.classList.add("hidden");
+    setActiveCard(null);
   }
 
   // disable run buttons while busy
   btnRunAll.disabled = !isIdle || state.recordings.length === 0;
   document.querySelectorAll(".btn-run").forEach((b) => (b.disabled = !isIdle));
+}
+
+function setActiveCard(recordingId) {
+  recordingsList.querySelectorAll(".recording-card").forEach((c) => {
+    c.classList.toggle("card-running", c.dataset.id === recordingId);
+  });
+  if (recordingId) {
+    const card = recordingsList.querySelector(`[data-id="${recordingId}"]`);
+    card?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }
 }
 
 function showRunSection(title) {
@@ -232,6 +300,7 @@ function showRunSection(title) {
   btnAbort.disabled = false;
   runSection.classList.remove("hidden");
   batchSection.classList.add("hidden");
+  state.dynamicBreakpoints.clear();
   setMode(RecordingState.REPLAYING);
 }
 
@@ -419,6 +488,7 @@ function renderEditSteps(steps) {
       <span class="edit-step-icon">${icon}</span>
       <span class="edit-step-label">${escapeHtml(main)}</span>
       ${editableHtml}
+      <button class="btn-debug-step${step.debug ? " active" : ""}" data-index="${i}" title="Pause replay here">⏸</button>
       <button class="btn-delete-edit-step" title="Delete step">×</button>
     `;
     editStepsList.appendChild(li);
@@ -551,10 +621,18 @@ btnRunAll.addEventListener("click", async () => {
   batchResults.innerHTML = "";
   batchSummary.textContent = "";
   batchSection.classList.add("hidden");
-  await send(MSG.RUN_ALL, { tabId });
+  await send(MSG.RUN_ALL, { tabId, stepDelay: stepDelay || undefined });
 });
 
 // Reset — aborts any active run, then clears all stuck state in the service worker
+btnNavA.addEventListener("click", () => {
+  chrome.tabs.update({ url: "https://appriserisksolutions--appriseuat.sandbox.lightning.force.com/lightning/n/Landing_Zone" });
+});
+
+btnNavV.addEventListener("click", () => {
+  chrome.tabs.update({ url: "https://vxtest.valex.com.au/valfirm/order_test_jobs.php" });
+});
+
 btnReset.addEventListener("click", async () => {
   await send(MSG.ABORT_RUN).catch(console.error);
   await send(MSG.RESET_STATE);
@@ -571,6 +649,21 @@ btnAbort.addEventListener("click", () => {
   btnAbort.disabled = true;
 });
 
+// Pause-step button on step items during replay
+stepsList.addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-pause-step");
+  if (!btn) return;
+  const stepIndex = Number(btn.dataset.step);
+  if (state.dynamicBreakpoints.has(stepIndex)) {
+    state.dynamicBreakpoints.delete(stepIndex);
+    btn.classList.remove("active");
+  } else {
+    state.dynamicBreakpoints.add(stepIndex);
+    btn.classList.add("active");
+    send(MSG.SET_DYNAMIC_BREAKPOINT, { stepIndex });
+  }
+});
+
 // Delegated click on recording list (run / delete / edit / history)
 recordingsList.addEventListener("click", async (e) => {
   const runBtn = e.target.closest(".btn-run");
@@ -585,7 +678,8 @@ recordingsList.addEventListener("click", async (e) => {
     if (!rec) return;
     stepsList.innerHTML = "";
     showRunSection(rec.title);
-    await send(MSG.RUN_RECORDING, { recordingId: rec.id, tabId });
+    setActiveCard(rec.id);
+    await send(MSG.RUN_RECORDING, { recordingId: rec.id, tabId, stepDelay: stepDelay || undefined });
   }
 
   if (deleteBtn) {
@@ -627,23 +721,28 @@ chrome.runtime.onMessage.addListener((msg) => {
       break;
 
     case MSG.RUN_COMPLETE: {
+      debugPanel.classList.add("hidden");
       const { passed, failedStep } = payload;
       progressBar.style.width = "100%";
       runTitle.textContent = passed ? "✅ Test passed" : "❌ Test failed";
       if (!passed && failedStep) {
         runSubtitle.textContent = `Step ${failedStep.index + 1} (${failedStep.type}): ${failedStep.error ?? ""}`;
       }
-      setMode(RecordingState.IDLE);
-      runSection.classList.remove("hidden"); // keep steps visible after single-test run
-      btnAbort.disabled = true; // run is done, abort no longer needed
+      // Stay in the run view so the user can review all steps.
+      // Just re-enable buttons without resetting the layout.
+      state.mode = RecordingState.IDLE;
+      btnAbort.disabled = true;
+      btnRunAll.disabled = state.recordings.length === 0;
+      document.querySelectorAll(".btn-run").forEach((b) => (b.disabled = false));
       loadRecordings();
       break;
     }
 
     case MSG.BATCH_PROGRESS: {
-      const { current, total, recordingTitle } = payload;
+      const { current, total, recordingId, recordingTitle } = payload;
       showRunSection(recordingTitle);
       runSubtitle.textContent = `Test ${current} of ${total}`;
+      setActiveCard(recordingId ?? null);
       break;
     }
 
@@ -662,7 +761,11 @@ chrome.runtime.onMessage.addListener((msg) => {
         .join("");
       batchSection.classList.remove("hidden");
       runSection.classList.add("hidden");
-      setMode(RecordingState.IDLE);
+      // Stay in the run view; just re-enable buttons without resetting the layout.
+      state.mode = RecordingState.IDLE;
+      btnAbort.disabled = true;
+      btnRunAll.disabled = state.recordings.length === 0;
+      document.querySelectorAll(".btn-run").forEach((b) => (b.disabled = false));
       loadRecordings();
       break;
     }
@@ -696,7 +799,25 @@ chrome.runtime.onMessage.addListener((msg) => {
       waitTimeOverlay.classList.remove("hidden");
       waitDurationInput.focus();
       break;
+
+    case MSG.DEBUG_PAUSE: {
+      const { stepIndex, total, stepType } = payload;
+      debugPanelText.textContent = `Paused after step ${stepIndex + 1} of ${total} (${stepType})`;
+      debugPanel.classList.remove("hidden");
+      break;
+    }
   }
+});
+
+// ── Debug panel buttons ─────────────────────────────────────────────────────────
+btnDebugNext.addEventListener("click", () => {
+  debugPanel.classList.add("hidden");
+  send(MSG.DEBUG_NEXT);
+});
+
+btnDebugFinish.addEventListener("click", () => {
+  debugPanel.classList.add("hidden");
+  send(MSG.DEBUG_FINISH);
 });
 
 // ── Variable dialog event listeners ────────────────────────────────────────────
@@ -818,6 +939,17 @@ editStepsList.addEventListener("click", (e) => {
   const idx = Number(li.dataset.index);
   editingRecording.steps.splice(idx, 1);
   renderEditSteps(editingRecording.steps);
+});
+
+// Debugger toggle — mark/unmark a step as a breakpoint
+editStepsList.addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-debug-step");
+  if (!btn || !editingRecording) return;
+  const idx = Number(btn.dataset.index);
+  const step = editingRecording.steps[idx];
+  if (!step) return;
+  step.debug = !step.debug;
+  btn.classList.toggle("active", step.debug);
 });
 
 // Inline value editing — update the step object as the user types

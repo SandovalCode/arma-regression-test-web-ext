@@ -74,18 +74,46 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             break;
           }
           sendResponse({ ok: true });
-          await runRecording(rec, payload.tabId);
+          await runRecording(rec, payload.tabId, payload.stepDelay);
           break;
         }
 
         case MSG.RUN_ALL: {
           sendResponse({ ok: true });
-          await runAll(payload.tabId);
+          await runAll(payload.tabId, payload.stepDelay);
           break;
         }
 
+        case MSG.DEBUG_NEXT:
+          replayState.stepOnce = true; // pause again after the very next step
+          if (replayState.debugResolve) {
+            replayState.debugResolve();
+            replayState.debugResolve = null;
+          }
+          sendResponse({ ok: true });
+          break;
+
+        case MSG.SET_DYNAMIC_BREAKPOINT:
+          replayState.dynamicBreakpoints.add(payload.stepIndex);
+          sendResponse({ ok: true });
+          break;
+
+        case MSG.DEBUG_FINISH:
+          replayState.debugFinished = true;
+          if (replayState.debugResolve) {
+            replayState.debugResolve();
+            replayState.debugResolve = null;
+          }
+          sendResponse({ ok: true });
+          break;
+
         case MSG.ABORT_RUN:
           replayState.aborted = true;
+          // If paused at a debug step, unblock the replay loop so it can detect abort.
+          if (replayState.debugResolve) {
+            replayState.debugResolve();
+            replayState.debugResolve = null;
+          }
           // Detach the debugger immediately so any in-flight CDP call throws right away,
           // terminating the current step without waiting for it to finish naturally.
           if (replayState.active && replayState.tabId) {
