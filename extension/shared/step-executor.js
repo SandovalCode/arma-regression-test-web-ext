@@ -724,6 +724,13 @@ async function execKeyUp(step, tabId, cdp) {
 
 async function execWaitForElement(step, tabId, contextId, cdp) {
   await waitForSelector(step.selectors, tabId, contextId, cdp, STEP_TIMEOUT_MS);
+
+  // Salesforce instant-result-item (search dropdown) triggers a fast internal
+  // re-render after appearing — wait an extra second for it to settle.
+  const selStr = JSON.stringify(step.selectors ?? "");
+  if (selStr.includes("instant-result-item")) {
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 
 async function execWaitForPageLoad(tabId, cdp) {
@@ -736,7 +743,9 @@ async function execWaitForPageLoad(tabId, cdp) {
       await sleep(3000);
       return;
     }
-  } catch (_) {}
+  } catch (e) {
+    console.error(e);
+  }
 
   // Normal pages: wait for 'complete', fall back to 'interactive' + 2s settle.
   const INTERACTIVE_SETTLE_MS = 2000;
@@ -774,7 +783,9 @@ async function execScroll(step, tabId, contextId, cdp) {
         deltaY: step.y ?? 0
       });
       return;
-    } catch (_) {}
+    } catch (e) {
+      console.error(e);
+    }
   }
   await cdp(tabId, "Runtime.evaluate", {
     expression: `window.scrollBy(${step.x ?? 0}, ${step.y ?? 0})`
@@ -1065,7 +1076,9 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
       const res = await cdp(tabId, "Runtime.evaluate", params);
       const objectId = res?.result?.objectId;
       if (objectId) return objectId;
-    } catch (_) {}
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   // Fallback: native CDP DOM.querySelector — bypasses JS-patched querySelector (e.g. LWC synthetic shadow)
@@ -1089,7 +1102,9 @@ async function resolveObjectId(selectors, tabId, contextId, cdp) {
       const resolved = await cdp(tabId, "DOM.resolveNode", { nodeId });
       const objectId = resolved?.object?.objectId;
       if (objectId) return objectId;
-    } catch (_) {}
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   return null;

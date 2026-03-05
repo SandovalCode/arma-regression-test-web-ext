@@ -97,7 +97,9 @@ export async function stopRecording(name, sendResponse) {
         window.__recorderCleanup?.();
       }
     });
-  } catch (_) {}
+  } catch (e) {
+    console.error(e);
+  }
 
   const id = crypto.randomUUID();
   const saved = await saveRecording({
@@ -120,7 +122,9 @@ export async function abortRecording() {
         window.__recorderCleanup?.();
       }
     });
-  } catch (_) {}
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 export async function forceReset() {
@@ -135,7 +139,9 @@ export async function forceReset() {
           window.__recorderCleanup?.();
         }
       });
-    } catch (_) {}
+    } catch (e) {
+      console.error(e);
+    }
   }
   recordingVarSnapshots.clear();
   Object.assign(recordingState, { active: false, tabId: null, steps: [] });
@@ -144,7 +150,9 @@ export async function forceReset() {
   if (replayState.active && replayState.tabId) {
     try {
       await chrome.debugger.detach({ tabId: replayState.tabId });
-    } catch (_) {}
+    } catch (e) {
+      console.error(e);
+    }
   }
   Object.assign(replayState, {
     active: false,

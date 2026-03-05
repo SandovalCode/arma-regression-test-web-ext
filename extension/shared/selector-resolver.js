@@ -42,7 +42,9 @@ export async function resolveSelector(selectors, tabId, contextId, cdp) {
     try {
       const result = await tryResolveCDPDom(selectorStr, tabId, cdp);
       if (result) return result;
-    } catch (_) {}
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   const tried = normalized.map((c) => c[0]).join(", ");
@@ -93,7 +95,9 @@ export async function waitForSelector(
       try {
         const result = await tryResolveCDPDom(candidate[0], tabId, cdp);
         if (result) return result;
-      } catch (_) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     if (allPrimaryThrew) {

@@ -95,7 +95,10 @@ btnHamburger.addEventListener("click", (e) => {
 });
 
 document.addEventListener("click", (e) => {
-  if (!hamburgerMenu.classList.contains("hidden") && !hamburgerMenu.contains(e.target)) {
+  if (
+    !hamburgerMenu.classList.contains("hidden") &&
+    !hamburgerMenu.contains(e.target)
+  ) {
     hamburgerMenu.classList.add("hidden");
     btnHamburger.setAttribute("aria-expanded", "false");
   }
@@ -288,7 +291,11 @@ function setActiveCard(recordingId) {
   });
   if (recordingId) {
     const card = recordingsList.querySelector(`[data-id="${recordingId}"]`);
-    card?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    card?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center"
+    });
   }
 }
 
@@ -626,11 +633,15 @@ btnRunAll.addEventListener("click", async () => {
 
 // Reset — aborts any active run, then clears all stuck state in the service worker
 btnNavA.addEventListener("click", () => {
-  chrome.tabs.update({ url: "https://appriserisksolutions--appriseuat.sandbox.lightning.force.com/lightning/n/Landing_Zone" });
+  chrome.tabs.update({
+    url: "https://appriserisksolutions--appriseuat.sandbox.lightning.force.com/lightning/n/Landing_Zone"
+  });
 });
 
 btnNavV.addEventListener("click", () => {
-  chrome.tabs.update({ url: "https://vxtest.valex.com.au/valfirm/order_test_jobs.php" });
+  chrome.tabs.update({
+    url: "https://vxtest.valex.com.au/valfirm/order_test_jobs.php"
+  });
 });
 
 btnReset.addEventListener("click", async () => {
@@ -679,7 +690,11 @@ recordingsList.addEventListener("click", async (e) => {
     stepsList.innerHTML = "";
     showRunSection(rec.title);
     setActiveCard(rec.id);
-    await send(MSG.RUN_RECORDING, { recordingId: rec.id, tabId, stepDelay: stepDelay || undefined });
+    await send(MSG.RUN_RECORDING, {
+      recordingId: rec.id,
+      tabId,
+      stepDelay: stepDelay || undefined
+    });
   }
 
   if (deleteBtn) {
@@ -733,7 +748,9 @@ chrome.runtime.onMessage.addListener((msg) => {
       state.mode = RecordingState.IDLE;
       btnAbort.disabled = true;
       btnRunAll.disabled = state.recordings.length === 0;
-      document.querySelectorAll(".btn-run").forEach((b) => (b.disabled = false));
+      document
+        .querySelectorAll(".btn-run")
+        .forEach((b) => (b.disabled = false));
       loadRecordings();
       break;
     }
@@ -765,7 +782,9 @@ chrome.runtime.onMessage.addListener((msg) => {
       state.mode = RecordingState.IDLE;
       btnAbort.disabled = true;
       btnRunAll.disabled = state.recordings.length === 0;
-      document.querySelectorAll(".btn-run").forEach((b) => (b.disabled = false));
+      document
+        .querySelectorAll(".btn-run")
+        .forEach((b) => (b.disabled = false));
       loadRecordings();
       break;
     }

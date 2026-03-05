@@ -83,7 +83,9 @@ header h1 {
   font-size: 16px;
   line-height: 1;
   color: var(--muted);
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 .btn-hamburger:hover {
   border-color: var(--muted);
@@ -136,7 +138,9 @@ header h1 {
   line-height: 1.4;
   color: var(--muted);
   white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 .hm-btn:hover {
   border-color: var(--muted);
@@ -158,15 +162,21 @@ header h1 {
   font-weight: 700;
   line-height: 1;
   color: var(--text);
-  transition: opacity 0.15s, transform 0.15s;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
   flex-shrink: 0;
 }
 .hm-badge:hover {
   opacity: 0.75;
   transform: scale(1.1);
 }
-.hm-badge--a { border-color: #384f5f; }
-.hm-badge--v { border-color: #E03C31; }
+.hm-badge--a {
+  border-color: #384f5f;
+}
+.hm-badge--v {
+  border-color: #e03c31;
+}
 
 /* ── Speed badges ── */
 .speed-badge {
@@ -178,7 +188,10 @@ header h1 {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
 }
 .speed-badge:hover {
   border-color: var(--accent);
@@ -870,7 +883,10 @@ input[type="text"]::placeholder {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
 }
 .btn-debug-step:hover {
   border-color: var(--yellow);

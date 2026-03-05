@@ -114,7 +114,9 @@
       const sel = `#${CSS.escape(el.id)}`;
       try {
         if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel;
-      } catch (_) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     for (const attr of el.attributes) {
@@ -126,7 +128,9 @@
       const sel = `${tag}[${attr.name}="${CSS.escape(attr.value)}"]`;
       try {
         if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel;
-      } catch (_) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     const cls = Array.from(el.classList)
@@ -138,7 +142,9 @@
     try {
       if ((root.querySelectorAll?.(candidate) ?? []).length === 1)
         return candidate;
-    } catch (_) {}
+    } catch (e) {
+      console.error(e);
+    }
 
     const parent = el.parentElement;
     if (parent) {

@@ -229,7 +229,6 @@ export async function runRecording(recording, tabId, stepDelay) {
                 err.message
               )
             );
-
           }
         }
 
@@ -239,7 +238,9 @@ export async function runRecording(recording, tabId, stepDelay) {
         const shouldPause =
           !replayState.debugFinished &&
           !replayState.aborted &&
-          (step.debug || replayState.stepOnce || replayState.dynamicBreakpoints.has(i));
+          (step.debug ||
+            replayState.stepOnce ||
+            replayState.dynamicBreakpoints.has(i));
         if (shouldPause) {
           replayState.stepOnce = false;
           replayState.dynamicBreakpoints.delete(i);
@@ -348,7 +349,9 @@ export async function runRecording(recording, tabId, stepDelay) {
     if (attached) {
       try {
         await chrome.debugger.detach({ tabId });
-      } catch (_) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
     // Preserve `aborted` so runAll's outer loop can detect a mid-batch abort.
     // The next call to runRecording resets it to false at its own start.

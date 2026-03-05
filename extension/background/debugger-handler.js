@@ -59,8 +59,11 @@ chrome.debugger.onDetach.addListener((source, reason) => {
             await chrome.debugger.attach({ tabId }, "1.3");
             await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
             await chrome.debugger.sendCommand({ tabId }, "Page.enable");
-            await chrome.debugger.sendCommand({ tabId }, "Page.addScriptToEvaluateOnNewDocument", {
-              source: `(function () {
+            await chrome.debugger.sendCommand(
+              { tabId },
+              "Page.addScriptToEvaluateOnNewDocument",
+              {
+                source: `(function () {
   const _NativePO = window.PerformanceObserver;
   const _SUPPORTED = new Set([
     "element","event","first-input","largest-contentful-paint",
@@ -80,7 +83,8 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   window.PerformanceObserver.prototype.takeRecords = function () { return this._inner.takeRecords().filter(e => _SUPPORTED.has(e.entryType)); };
   window.PerformanceObserver.supportedEntryTypes  = _NativePO.supportedEntryTypes;
 })();`
-            });
+              }
+            );
             frameContextMap.clear();
             console.log("[Replay] Debugger re-attached successfully");
             clearTimeout(giveUpTimer);

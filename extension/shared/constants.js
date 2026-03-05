@@ -33,9 +33,9 @@ export const MSG = {
   SHOW_WAIT_DIALOG: "SHOW_WAIT_DIALOG", // SW → sidepanel: open the wait-for-time dialog
 
   // Step debugger
-  DEBUG_PAUSE: "DEBUG_PAUSE",              // SW → sidepanel: replay paused at a debug step
-  DEBUG_NEXT: "DEBUG_NEXT",               // sidepanel → SW: continue one step then pause again
-  DEBUG_FINISH: "DEBUG_FINISH",           // sidepanel → SW: stop pausing at debug steps
+  DEBUG_PAUSE: "DEBUG_PAUSE", // SW → sidepanel: replay paused at a debug step
+  DEBUG_NEXT: "DEBUG_NEXT", // sidepanel → SW: continue one step then pause again
+  DEBUG_FINISH: "DEBUG_FINISH", // sidepanel → SW: stop pausing at debug steps
   SET_DYNAMIC_BREAKPOINT: "SET_DYNAMIC_BREAKPOINT" // sidepanel → SW: pause after step N
 };
 

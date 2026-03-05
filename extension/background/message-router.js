@@ -247,7 +247,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
                           el = document.querySelector(sel);
                         }
                         if (el) break;
-                      } catch (_) {}
+                      } catch (e) {
+                        console.error(e);
+                      }
                     }
                     if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName))
                       return;
@@ -326,7 +328,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       console.warn(`[SW] Error handling message "${type}":`, err.message);
       try {
         sendResponse({ ok: false, error: err.message });
-      } catch (_) {}
+      } catch (e) {
+        console.error(e);
+      }
     }
   })();
 
