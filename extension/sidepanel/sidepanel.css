@@ -903,6 +903,7 @@ input[type="text"]::placeholder {
   color: var(--yellow);
 }
 .btn-debug-step.active {
+  display: inline-flex;
   background: rgba(245, 158, 11, 0.15);
   border-color: var(--yellow);
   color: var(--yellow);
