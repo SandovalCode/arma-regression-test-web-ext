@@ -744,6 +744,14 @@ input[type="text"]::placeholder {
 .edit-step-item:hover {
   background: rgba(99, 102, 241, 0.08);
 }
+.edit-step-num {
+  flex-shrink: 0;
+  min-width: 20px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 10px;
+  margin-right: 2px;
+}
 .edit-step-icon {
   flex-shrink: 0;
 }
@@ -781,7 +789,9 @@ input[type="text"]::placeholder {
   margin-left: 3px;
   flex-shrink: 0;
 }
-.btn-delete-edit-step {
+
+.btn-delete-edit-step,
+.btn-debug-step {
   display: none;
   align-items: center;
   justify-content: center;
@@ -799,7 +809,12 @@ input[type="text"]::placeholder {
   color: var(--red);
   background: rgba(239, 68, 68, 0.1);
 }
-.edit-step-item:hover .btn-delete-edit-step {
+.btn-debug-step:hover {
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.1);
+}
+.edit-step-item:hover .btn-delete-edit-step,
+.edit-step-item:hover .btn-debug-step {
   display: flex;
 }
 
@@ -858,20 +873,15 @@ input[type="text"]::placeholder {
   flex-shrink: 0;
   transition: color 0.15s;
 }
+.btn-pause-step,
+.btn-pause-step.active,
 .step-item:hover .btn-pause-step {
-  display: flex;
-}
-.btn-pause-step.active {
-  display: flex;
-  color: var(--yellow);
-}
-.btn-pause-step:hover {
-  color: var(--yellow);
+  display: none;
 }
 
 /* ── Step debugger button (inside edit overlay) ── */
 .btn-debug-step {
-  display: inline-flex;
+  display: none;
   align-items: center;
   padding: 2px 7px;
   font-size: 10px;
