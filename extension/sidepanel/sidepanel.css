@@ -792,7 +792,7 @@ input[type="text"]::placeholder {
 
 .btn-delete-edit-step,
 .btn-debug-step {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 4px;
@@ -804,6 +804,7 @@ input[type="text"]::placeholder {
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+  visibility: hidden;
 }
 .btn-delete-edit-step:hover {
   color: var(--red);
@@ -815,7 +816,7 @@ input[type="text"]::placeholder {
 }
 .edit-step-item:hover .btn-delete-edit-step,
 .edit-step-item:hover .btn-debug-step {
-  display: flex;
+  visibility: visible;
 }
 
 /* ── Paste Variable Dialog ── */
@@ -881,7 +882,6 @@ input[type="text"]::placeholder {
 
 /* ── Step debugger button (inside edit overlay) ── */
 .btn-debug-step {
-  display: none;
   align-items: center;
   padding: 2px 7px;
   font-size: 10px;
@@ -903,7 +903,7 @@ input[type="text"]::placeholder {
   color: var(--yellow);
 }
 .btn-debug-step.active {
-  display: inline-flex;
+  visibility: visible;
   background: rgba(245, 158, 11, 0.15);
   border-color: var(--yellow);
   color: var(--yellow);
