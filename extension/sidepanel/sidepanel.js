@@ -496,7 +496,7 @@ function renderEditSteps(steps) {
       <span class="edit-step-icon">${icon}</span>
       <span class="edit-step-label">${escapeHtml(main)}</span>
       ${editableHtml}
-      <button class="btn-debug-step${step.debug ? " active" : ""}" title="Pause replay here">⏸</button>
+      <button class="btn-debug-step${step.debug ? " active" : ""}" data-index="${i}" title="Pause replay here">⏸</button>
       <button class="btn-delete-edit-step" title="Delete step">×</button>
     `;
     editStepsList.appendChild(li);
