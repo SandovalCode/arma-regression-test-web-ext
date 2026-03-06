@@ -179,10 +179,11 @@
   }
 
   // ── State ────────────────────────────────────────────────────────────────────
-  let lastSelection = "";
   let lastSelectionEl = null;
+  let lastContextMenuLocalEl = null; // element under cursor on last right-click
   let lastCopiedVarName = null;
   let pendingInputChange = null; // debounce: fire change step only on blur/change
+  let suppressChangeUntil = 0; // timestamp: suppress input/change steps after paste
   let _clickTimer = null; // double-click detection: delay single clicks
   let _pendingClickStep = null;
 
@@ -472,19 +473,24 @@
   function handleMouseUp(e) {
     const sel = window.getSelection()?.toString() ?? "";
     if (sel.length > 0) {
-      lastSelection = sel;
       lastSelectionEl = e.target;
     }
   }
 
   // Debounce input → fire step on change/blur instead of every keystroke
   function handleInput(e) {
+    // Only record real user input — ignore events dispatched by page JS / LWC frameworks.
+    if (!e.isTrusted) return;
+    if (Date.now() < suppressChangeUntil) return; // suppress post-paste input events
     const el = e.target;
     if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
     pendingInputChange = { el, value: el.value };
   }
 
   function handleChange(e) {
+    // Only record real user input — ignore events dispatched by page JS / LWC frameworks.
+    if (!e.isTrusted) return;
+    if (Date.now() < suppressChangeUntil) return; // suppress post-paste change events
     const el = e.target;
     if (!el) return;
 
@@ -534,6 +540,7 @@
   // When the input loses focus and there's still a pending change, flush it
   // after a short delay to let the autocomplete library update the value first.
   function handleBlur(e) {
+    if (Date.now() < suppressChangeUntil) return; // suppress post-paste blur flush
     const el = e.target;
     if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
     if (!pendingInputChange || pendingInputChange.el !== el) return;
@@ -563,11 +570,15 @@
 
   // Copy event — covers Ctrl+C, Cmd+C, and right-click → Copy
   function handleCopy(_e) {
-    const sel = window.getSelection()?.toString() ?? lastSelection ?? "";
+    // Capture exactly what is selected at the moment of copy:
+    // - Highlighted text → window.getSelection() returns it directly
+    // - Right-click on a word → browser natively selects the word before firing copy
+    // - Input/textarea with a selection → check selectionStart/selectionEnd
+    // Never fall back to guessing (no textContent, no full input value).
     const activeEl = document.activeElement;
+    let copiedText = window.getSelection()?.toString() ?? "";
 
-    let copiedText = sel;
-    // If nothing selected globally, try the active input's selection
+    // If nothing in the global selection, check if an input/textarea has a selection
     if (
       !copiedText &&
       activeEl &&
@@ -577,8 +588,12 @@
         activeEl.selectionStart,
         activeEl.selectionEnd
       );
-      if (!copiedText) copiedText = activeEl.value; // fallback: whole value
     }
+
+    // Prefer: element from right-click (right-click → Copy flow)
+    // Then:   element from left-click selection (highlight → Ctrl+C flow)
+    // Fallback: whatever has focus
+    const targetEl = lastContextMenuLocalEl || lastSelectionEl || activeEl;
 
     const varName = `clipboard_${Date.now()}`;
     lastCopiedVarName = varName;
@@ -588,12 +603,12 @@
       target: "main",
       variableName: varName,
       snapshotValue: copiedText,
-      selectors: generateSelectors(activeEl || lastSelectionEl),
+      selectors: generateSelectors(targetEl),
       ...frameInfo
     });
 
     // Reset selection tracking
-    lastSelection = "";
+    lastContextMenuLocalEl = null;
     lastSelectionEl = null;
   }
 
@@ -607,6 +622,9 @@
       selectors: generateSelectors(el),
       ...frameInfo
     });
+    // Suppress input/change/blur steps triggered by the paste action itself.
+    pendingInputChange = null;
+    suppressChangeUntil = Date.now() + 500;
   }
 
   // Keyboard events — only record non-trivial keys (exclude individual char keys
@@ -675,6 +693,7 @@
   function handleContextMenu(e) {
     const el = getTarget(e);
     if (!el || el.tagName === "HTML" || el.tagName === "BODY") return;
+    lastContextMenuLocalEl = el; // used by handleCopy to get the right selector
     const rect = el.getBoundingClientRect();
 
     // Capture element's current text/value so the SW can use it as a default

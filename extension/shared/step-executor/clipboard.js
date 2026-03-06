@@ -9,9 +9,11 @@ export async function execCopyVariableAtRecording(
   clipboardVars,
   cdp
 ) {
-  // Read directly from the recorded element — window.getSelection() is unreliable
-  // at replay time (no human interaction) and can pick up stray selected text left
-  // by previous CDP clicks (e.g. "Basic Search" link text).
+  // Mirror the recording logic exactly:
+  // 1. window.getSelection() — highlighted text or right-click word selection
+  // 2. selectionStart/selectionEnd for inputs/textareas — only the selected portion
+  // 3. Never grab the full value or textContent
+  // 4. Fall back to snapshotValue (what was literally selected at record time)
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   console.log(
     `[Copy] var="${step.variableName}" objectId=${objectId ? "found" : "NOT FOUND"} selectors=`,
@@ -24,20 +26,52 @@ export async function execCopyVariableAtRecording(
 
   const res = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
-    functionDeclaration: `function() {
-      if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
-        return this.value;
+    functionDeclaration: `function(snapshotValue) {
+      // For inputs/textareas: find snapshotValue in the value and select that range.
+      if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA') {
+        if (snapshotValue) {
+          const idx = this.value.indexOf(snapshotValue);
+          if (idx !== -1) {
+            this.focus();
+            this.setSelectionRange(idx, idx + snapshotValue.length);
+            return snapshotValue;
+          }
+        }
+        return this.value.slice(this.selectionStart, this.selectionEnd);
       }
-      return this.textContent?.trim() ?? '';
+      // For text nodes: find snapshotValue in the element's text and select it,
+      // mirroring what the browser does when the user right-clicks on a word.
+      if (snapshotValue) {
+        const walker = document.createTreeWalker(this, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          const idx = node.textContent.indexOf(snapshotValue);
+          if (idx !== -1) {
+            const range = document.createRange();
+            range.setStart(node, idx);
+            range.setEnd(node, idx + snapshotValue.length);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return snapshotValue;
+          }
+        }
+      }
+      // Fall through to whatever is currently selected.
+      return window.getSelection()?.toString() ?? "";
     }`,
+    arguments: [{ value: step.snapshotValue ?? "" }],
     returnByValue: true
   }).catch(console.error);
 
-  const captured = res?.result?.value ?? "";
-  console.log(`[Copy] var="${step.variableName}" captured="${captured}"`);
+  const liveCapture = res?.result?.value ?? "";
+  const captured = liveCapture || step.snapshotValue || "";
+  console.log(
+    `[Copy] var="${step.variableName}" liveCapture="${liveCapture}" snapshotValue="${step.snapshotValue}" using="${captured}"`
+  );
   if (!captured)
     throw new Error(
-      `copy: element found but value is empty for variable "${step.variableName}"`
+      `copy: element found but nothing was selected for variable "${step.variableName}"`
     );
 
   clipboardVars.set(step.variableName, captured);
@@ -89,6 +123,8 @@ export async function execCopyVariableAtReplaying(
 
   const res = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
+    // copyVariable captures the live text content of the element at replay time —
+    // not a user selection. Read value for form fields, textContent for everything else.
     functionDeclaration: `function() {
       if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.tagName === 'SELECT') {
         return this.value;
@@ -98,11 +134,14 @@ export async function execCopyVariableAtReplaying(
     returnByValue: true
   });
 
-  const value = res?.result?.value;
-  console.log(`[CopyVariable] var="${step.variableName}" captured="${value}"`);
+  const liveCapture = res?.result?.value ?? "";
+  const value = liveCapture || step.defaultValue || "";
+  console.log(
+    `[CopyVariable] var="${step.variableName}" liveCapture="${liveCapture}" defaultValue="${step.defaultValue}" using="${value}"`
+  );
   if (!value)
     throw new Error(
-      `copyVariable: element found but value is empty for variable "${step.variableName}"`
+      `copyVariable: element found but text content is empty for variable "${step.variableName}"`
     );
 
   const suffix = variables.get("__replaySuffix__") ?? "";
