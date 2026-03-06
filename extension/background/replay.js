@@ -1,6 +1,6 @@
 import { MSG } from "../shared/constants.js";
 import { getRecordings, appendRunResult } from "../shared/storage.js";
-import { executeStep } from "../shared/step-executor.js";
+import { executeStep } from "../shared/step-executor/index.js";
 import {
   replayState,
   clipboardVars,
