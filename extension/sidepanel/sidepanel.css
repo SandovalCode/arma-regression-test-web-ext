@@ -456,6 +456,38 @@ input[type="text"]::placeholder {
   display: none;
 }
 
+/* During recording: expand the feed to fill remaining viewport height */
+body:has(#record-active:not(.hidden)) {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body:has(#record-active:not(.hidden)) > hr {
+  display: none;
+}
+
+body:has(#record-active:not(.hidden)) #record-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#record-active:not(.hidden) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#record-active:not(.hidden) .record-feed {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 /* ── Recording Card ── */
 .recording-card {
   background: var(--surface);

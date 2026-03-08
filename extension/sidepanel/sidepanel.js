@@ -27,6 +27,7 @@ const recordFeed = $("record-feed");
 const recordingsEmpty = $("recordings-empty");
 const recordingsList = $("recordings-list");
 const btnRunAll = $("btn-run-all");
+const listSection = $("list-section");
 const runSection = $("run-section");
 const runTitle = $("run-title");
 const runSubtitle = $("run-subtitle");
@@ -270,6 +271,9 @@ function setMode(mode) {
   recordSection.classList.toggle("hidden", isReplaying);
   recordIdle.classList.toggle("hidden", !isIdle);
   recordActive.classList.toggle("hidden", !isRecording);
+
+  // hide "My Tests" section while recording
+  listSection.classList.toggle("hidden", isRecording);
 
   // horizontal card layout only while replaying
   recordingsList.classList.toggle("is-running", isReplaying);
