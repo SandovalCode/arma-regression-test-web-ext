@@ -63,14 +63,43 @@ header {
   position: relative;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
 }
 header h1 {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-back {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--muted);
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.btn-back:hover {
+  color: var(--text);
+  background: var(--border);
+}
+.invisible {
+  visibility: hidden;
 }
 
 /* ── Hamburger button ── */
@@ -454,6 +483,27 @@ input[type="text"]::placeholder {
 /* Hide the hr separator when the record section is collapsed */
 #record-section.hidden + hr {
   display: none;
+}
+
+/* During replay: expand the steps list to fill remaining viewport height */
+body:has(#run-section:not(.hidden)) {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body:has(#run-section:not(.hidden)) #run-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#run-section:not(.hidden) .steps-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 /* During recording: expand the feed to fill remaining viewport height */

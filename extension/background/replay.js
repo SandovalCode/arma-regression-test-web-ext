@@ -366,6 +366,7 @@ export async function runAll(tabId, stepDelay) {
   const recordings = await getRecordings();
   if (recordings.length === 0) return;
 
+  replayState.aborted = false;
   const results = [];
 
   for (let i = 0; i < recordings.length; i++) {

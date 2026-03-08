@@ -47,6 +47,7 @@ const btnNavA = $("btn-nav-a");
 const btnNavV = $("btn-nav-v");
 const btnHamburger = $("btn-hamburger");
 const hamburgerMenu = $("hamburger-menu");
+const btnBack = $("btn-back");
 const speedBadges = document.querySelectorAll(".speed-badge");
 const debugPanel = $("debug-panel");
 const debugPanelText = $("debug-panel-text");
@@ -275,6 +276,7 @@ function setMode(mode) {
   // hide "My Tests" section while recording
   listSection.classList.toggle("hidden", isRecording);
 
+
   // horizontal card layout only while replaying
   recordingsList.classList.toggle("is-running", isReplaying);
 
@@ -312,6 +314,7 @@ function showRunSection(title) {
   runSection.classList.remove("hidden");
   batchSection.classList.add("hidden");
   state.dynamicBreakpoints.clear();
+  btnBack.classList.remove("invisible");
   setMode(RecordingState.REPLAYING);
 }
 
@@ -649,11 +652,23 @@ btnNavV.addEventListener("click", () => {
   });
 });
 
+btnBack.addEventListener("click", async () => {
+  if (state.mode === RecordingState.REPLAYING) {
+    if (!confirm("A test is still running. Stop it and go back?")) return;
+    await send(MSG.ABORT_RUN);
+  }
+  btnBack.classList.add("invisible");
+  runSection.classList.add("hidden");
+  batchSection.classList.add("hidden");
+  setMode(RecordingState.IDLE);
+});
+
 btnReset.addEventListener("click", async () => {
   await send(MSG.ABORT_RUN).catch(console.error);
   await send(MSG.RESET_STATE);
   runSection.classList.add("hidden");
   batchSection.classList.add("hidden");
+  btnBack.classList.add("invisible");
   setMode(RecordingState.IDLE);
 });
 

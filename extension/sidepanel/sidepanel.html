@@ -9,28 +9,9 @@
   <body>
     <!-- ── Header ── -->
     <header>
+      <button id="btn-back" class="btn-back invisible" title="Back to tests">❰</button>
       <h1>Test Recorder</h1>
-      <button
-        id="btn-hamburger"
-        class="btn-hamburger"
-        title="Menu"
-        aria-label="Open menu"
-        aria-expanded="false"
-      >
-        ☰
-      </button>
-    </header>
-
-    <!-- ── Hamburger Dropdown ── -->
-    <div id="hamburger-menu" class="hamburger-menu hidden">
-      <div class="hamburger-row">
-        <button
-          id="btn-reset"
-          class="hm-btn"
-          title="Reset — clears any stuck recording or replay state"
-        >
-          ↺ Reset
-        </button>
+      <div class="header-actions">
         <button
           id="btn-nav-a"
           class="hm-badge hm-badge--a"
@@ -44,6 +25,28 @@
           title="Navigate to Valex"
         >
           V
+        </button>
+        <button
+          id="btn-hamburger"
+          class="btn-hamburger"
+          title="Menu"
+          aria-label="Open menu"
+          aria-expanded="false"
+        >
+          ☰
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Hamburger Dropdown ── -->
+    <div id="hamburger-menu" class="hamburger-menu hidden">
+      <div class="hamburger-row">
+        <button
+          id="btn-reset"
+          class="hm-btn"
+          title="Reset — clears any stuck recording or replay state"
+        >
+          ↺ Reset
         </button>
         <button id="btn-theme" class="hm-btn" title="Toggle theme">🌙</button>
       </div>
