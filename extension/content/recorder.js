@@ -20,6 +20,29 @@
   if (window.__recorderActive) return;
   window.__recorderActive = true;
 
+  // ── Value pattern inference ───────────────────────────────────────────────────
+  // Infers a RegExp string that matches the structure of a recorded value.
+  // Used as a fallback during replay when selectors fail (e.g. dynamic IDs).
+  function inferValuePattern(value) {
+    if (!value) return "";
+    // Pure integer — match exact digit count (e.g. "7339382" → "^\d{7}$")
+    if (/^\d+$/.test(value)) return `^\\d{${value.length}}$`;
+    // ISO date — digits are fixed-length by definition
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return "^\\d{4}-\\d{2}-\\d{2}$";
+    // Email
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+      return "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$";
+    // Mixed (e.g. "JOB-12345", "ORD-2024-001"): escape non-digit chars,
+    // replace each digit run with \d{N} to capture its exact length.
+    if (/\d/.test(value)) {
+      const escaped = value
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\d+/g, (m) => `\\d{${m.length}}`);
+      return `^${escaped}$`;
+    }
+    return "";
+  }
+
   // ── Salesforce / Shadow DOM support ──────────────────────────────────────────
 
   function isSalesforce() {
@@ -696,10 +719,30 @@
     lastContextMenuLocalEl = el; // used by handleCopy to get the right selector
     const rect = el.getBoundingClientRect();
 
-    // Capture element's current text/value so the SW can use it as a default
-    // for the "Save variable" dialog without needing another executeScript round-trip.
+    // Capture the text to use as default in the "Save variable" dialog.
+    // Priority:
+    // 1. Explicit drag-selection anchored inside this element (non-collapsed, within el) —
+    //    ignores stale selections from anywhere else on the page.
+    // 2. For INPUT/TEXTAREA: the selected portion (selectionStart/End), or full value.
+    // 3. For SELECT: the current value.
+    // 4. Everything else (links, divs, spans, etc.): element's full textContent.
     let elementValue = "";
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) {
+    const sel = window.getSelection();
+    const selText = !sel?.isCollapsed ? (sel?.toString().trim() ?? "") : "";
+    const selInEl =
+      selText &&
+      sel.anchorNode &&
+      sel.focusNode &&
+      el.contains(sel.anchorNode) &&
+      el.contains(sel.focusNode);
+
+    if (selInEl) {
+      elementValue = selText;
+    } else if (["INPUT", "TEXTAREA"].includes(el.tagName)) {
+      const start = el.selectionStart ?? 0;
+      const end = el.selectionEnd ?? 0;
+      elementValue = start !== end ? el.value.slice(start, end) : (el.value ?? "");
+    } else if (el.tagName === "SELECT") {
       elementValue = el.value ?? "";
     } else {
       elementValue = el.textContent?.trim() ?? "";
@@ -713,11 +756,13 @@
           offsetX: Math.max(0, Math.round(e.clientX - rect.left)),
           offsetY: Math.max(0, Math.round(e.clientY - rect.top)),
           frame: getFrameIndex(),
-          elementValue: elementValue.slice(0, 200)
+          elementValue: elementValue.slice(0, 200),
+          valuePattern: inferValuePattern(elementValue),
+          elementTag: el.tagName.toLowerCase()
         }
       });
-    } catch (_) {
-      // Extension context invalidated — ignore.
+    } catch (e) {
+      console.error(e);
     }
   }
 

@@ -798,6 +798,12 @@ body:has(#record-active:not(.hidden)) #record-section {
   letter-spacing: 0.06em;
   margin-bottom: 6px;
 }
+.edit-label-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
 .edit-steps-header {
   margin-top: 12px;
   margin-bottom: 6px;
@@ -873,7 +879,8 @@ body:has(#record-active:not(.hidden)) #record-section {
 }
 
 .btn-delete-edit-step,
-.btn-debug-step {
+.btn-debug-step,
+.btn-continue-from-step {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -896,8 +903,13 @@ body:has(#record-active:not(.hidden)) #record-section {
   color: var(--accent);
   background: rgba(99, 102, 241, 0.1);
 }
+.btn-continue-from-step:hover {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
 .edit-step-item:hover .btn-delete-edit-step,
-.edit-step-item:hover .btn-debug-step {
+.edit-step-item:hover .btn-debug-step,
+.edit-step-item:hover .btn-continue-from-step {
   visibility: visible;
 }
 

@@ -62,6 +62,7 @@ const btnEditCancel = $("btn-edit-cancel");
 const varOverlay = $("var-overlay");
 const varNameInput = $("var-name");
 const varValueInput = $("var-value");
+const varPatternInput = $("var-pattern");
 const btnVarSave = $("btn-var-save");
 const btnVarCancel = $("btn-var-cancel");
 const pasteVarOverlay = $("paste-var-overlay");
@@ -504,6 +505,7 @@ function renderEditSteps(steps) {
       <span class="edit-step-label">${escapeHtml(main)}</span>
       ${editableHtml}
       <button class="btn-debug-step${step.debug ? " active" : ""}" data-index="${i}" title="Pause replay here">⏸</button>
+      <button class="btn-continue-from-step" data-index="${i}" title="Continue recording from here">⏺</button>
       <button class="btn-delete-edit-step" title="Delete step">×</button>
     `;
     editStepsList.appendChild(li);
@@ -810,9 +812,10 @@ chrome.runtime.onMessage.addListener((msg) => {
     }
 
     case MSG.SHOW_VARIABLE_DIALOG:
-      pendingVariableStep = payload; // { selectors, defaultValue, frame }
+      pendingVariableStep = payload; // { selectors, defaultValue, valuePattern, elementTag, frame }
       varNameInput.value = "";
       varValueInput.value = payload.defaultValue ?? "";
+      varPatternInput.value = payload.valuePattern ?? "";
       varOverlay.classList.remove("hidden");
       varNameInput.focus();
       break;
@@ -873,6 +876,8 @@ btnVarSave.addEventListener("click", async () => {
     target: "main",
     variableName: name,
     defaultValue: varValueInput.value,
+    valuePattern: varPatternInput.value.trim(),
+    elementTag: pendingVariableStep?.elementTag ?? "",
     selectors: pendingVariableStep?.selectors ?? [],
     ...(pendingVariableStep?.frame?.length
       ? { frame: pendingVariableStep.frame }
@@ -978,6 +983,30 @@ editStepsList.addEventListener("click", (e) => {
   const idx = Number(li.dataset.index);
   editingRecording.steps.splice(idx, 1);
   renderEditSteps(editingRecording.steps);
+});
+
+// Continue recording from a specific step
+editStepsList.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".btn-continue-from-step");
+  if (!btn || !editingRecording) return;
+  const idx = Number(btn.dataset.index);
+  const steps = editingRecording.steps.slice(0, idx + 1);
+
+  const tabId = await getActiveTabId();
+  if (!tabId) return alert("No active tab found.");
+
+  // Close the edit overlay
+  editOverlay.classList.add("hidden");
+  editingRecording = null;
+
+  // Set up the recording UI with the pre-existing steps
+  recordFeed.innerHTML = "";
+  state.recordingStepCount = steps.length;
+  stepCountEl.textContent = steps.length;
+  setMode(RecordingState.RECORDING);
+  steps.forEach((step) => appendFeedItem(step));
+
+  await send(MSG.CONTINUE_RECORDING, { tabId, steps });
 });
 
 // Debugger toggle — mark/unmark a step as a breakpoint

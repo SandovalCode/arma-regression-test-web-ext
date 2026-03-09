@@ -111,11 +111,52 @@ export async function execCopyVariableAtReplaying(
   cdp,
   variables
 ) {
+  const suffix = variables.get("__replaySuffix__") ?? "";
+  const varKey = suffix ? `${step.variableName}-${suffix}` : step.variableName;
+
+  // ── 1. Pattern scan (primary for dynamic values) ─────────────────────────
+  // Try the RegExp pattern first — it matches the structure of the value
+  // regardless of what the actual content is at replay time.
+  if (step.valuePattern) {
+    console.log(
+      `[CopyVariable] trying pattern "${step.valuePattern}" on tag "${step.elementTag}"`
+    );
+    const patternRes = await cdp(tabId, "Runtime.evaluate", {
+      expression: `(function() {
+        const pattern = new RegExp(${JSON.stringify(step.valuePattern)});
+        const tag = ${JSON.stringify(step.elementTag || "")};
+        const tags = tag ? [tag] : ['a','td','span','div','p','li'];
+        for (const t of tags) {
+          for (const el of document.querySelectorAll(t)) {
+            if (el.offsetParent === null) continue;
+            const text = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')
+              ? el.value
+              : el.textContent?.trim() ?? '';
+            if (text && pattern.test(text)) return text;
+          }
+        }
+        return null;
+      })()`,
+      returnByValue: true,
+      ...(contextId ? { contextId } : {})
+    }).catch(console.error);
+
+    const patternValue = patternRes?.result?.value;
+    if (patternValue) {
+      console.log(`[CopyVariable] pattern match: "${patternValue}" → stored as key="${varKey}"`);
+      variables.set(varKey, patternValue);
+      return;
+    }
+    console.log(`[CopyVariable] pattern scan found nothing — falling back to selectors`);
+  }
+
+  // ── 2. Selector-based fallback ────────────────────────────────────────────
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
   console.log(
     `[CopyVariable] var="${step.variableName}" objectId=${objectId ? "found" : "NOT FOUND"} selectors=`,
     JSON.stringify(step.selectors)
   );
+
   if (!objectId)
     throw new Error(
       `copyVariable: could not find element for variable "${step.variableName}". Tried: ${JSON.stringify(step.selectors)}`
@@ -144,8 +185,6 @@ export async function execCopyVariableAtReplaying(
       `copyVariable: element found but text content is empty for variable "${step.variableName}"`
     );
 
-  const suffix = variables.get("__replaySuffix__") ?? "";
-  const varKey = suffix ? `${step.variableName}-${suffix}` : step.variableName;
   variables.set(varKey, value);
   console.log(`[CopyVariable] stored as key="${varKey}"`);
 }

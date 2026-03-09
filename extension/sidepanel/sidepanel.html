@@ -161,6 +161,14 @@
           placeholder="Value from page"
           maxlength="200"
         />
+        <label class="edit-label">Value pattern <span class="edit-label-hint">(RegExp — used to find the element at replay if the value changed)</span></label>
+        <input
+          id="var-pattern"
+          type="text"
+          placeholder="e.g. ^\d+$"
+          maxlength="200"
+          readonly
+        />
         <div class="dialog-actions">
           <button id="btn-var-save" class="btn btn-primary">Save</button>
           <button id="btn-var-cancel" class="btn btn-ghost">Cancel</button>

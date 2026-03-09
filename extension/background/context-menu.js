@@ -72,6 +72,8 @@ chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
     broadcast(MSG.SHOW_VARIABLE_DIALOG, {
       selectors: elInfo.selectors,
       defaultValue: elInfo.elementValue ?? "",
+      valuePattern: elInfo.valuePattern ?? "",
+      elementTag: elInfo.elementTag ?? "",
       frame: elInfo.frame ?? []
     });
     return;

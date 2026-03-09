@@ -14,6 +14,7 @@ import {
 import { broadcast } from "./utils.js";
 import {
   startRecording,
+  continueRecording,
   stopRecording,
   abortRecording,
   forceReset
@@ -53,6 +54,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         // ── Recording ──
         case MSG.START_RECORDING:
           await startRecording(payload.tabId);
+          sendResponse({ ok: true });
+          break;
+
+        case MSG.CONTINUE_RECORDING:
+          await continueRecording(payload.tabId, payload.steps);
           sendResponse({ ok: true });
           break;
 

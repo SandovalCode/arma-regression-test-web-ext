@@ -2,6 +2,7 @@
 export const MSG = {
   // Recording control
   START_RECORDING: "START_RECORDING",
+  CONTINUE_RECORDING: "CONTINUE_RECORDING", // start recording with pre-existing steps (from edit overlay)
   STOP_RECORDING: "STOP_RECORDING",
   ABORT_RECORDING: "ABORT_RECORDING",
 

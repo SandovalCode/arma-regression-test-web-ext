@@ -79,6 +79,32 @@ async function onNavCommitted(details) {
   }
 }
 
+export async function continueRecording(tabId, steps) {
+  // Same cleanup as startRecording — reset any previous recorder session
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: () => {
+        window.__recorderCleanup?.();
+        window.__recorderActive = false;
+      }
+    });
+  } catch (_) {
+    /* tab may not be ready yet, proceed anyway */
+  }
+
+  recordingVarSnapshots.clear();
+  Object.assign(recordingState, { active: true, tabId, steps: [...steps] });
+  startKeepalive();
+
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    files: ["content/recorder.js"]
+  });
+
+  chrome.webNavigation.onDOMContentLoaded.addListener(onNavCommitted);
+}
+
 export async function stopRecording(name, sendResponse) {
   if (!recordingState.active) {
     sendResponse({ ok: false });
@@ -115,6 +141,7 @@ export async function abortRecording() {
   recordingState.active = false;
   stopKeepalive();
   chrome.webNavigation.onDOMContentLoaded.removeListener(onNavCommitted);
+  if (!recordingState.tabId) return;
   try {
     await chrome.scripting.executeScript({
       target: { tabId: recordingState.tabId, allFrames: true },
