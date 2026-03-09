@@ -17,6 +17,13 @@ export async function execNavigate(step, tabId, cdp) {
       await sleep(600);
       return;
     }
+    // pendingUrl is heading to the same page but a different query string
+    // (e.g. form submit → server-assigned auto-increment job_id). Follow the redirect.
+    if (samePathname(pendingUrl, targetUrl)) {
+      await waitForNavigation(tabId, NAV_TIMEOUT_MS);
+      await sleep(600);
+      return;
+    }
     // Loading to a different URL — wait for it to settle, then check again.
     await waitForNavigation(tabId, NAV_TIMEOUT_MS);
     const settled = await chrome.tabs.get(tabId);
@@ -24,7 +31,17 @@ export async function execNavigate(step, tabId, cdp) {
       await sleep(600);
       return;
     }
+    // Settled on the same page but a different query string — same redirect case.
+    if (samePathname(settled.url ?? "", targetUrl)) {
+      await sleep(600);
+      return;
+    }
   } else if (normalizeUrl(tab.url ?? "") === normalizeUrl(targetUrl)) {
+    await sleep(300);
+    return;
+  } else if (samePathname(tab.url ?? "", targetUrl)) {
+    // Tab already completed a redirect to the same page with a different query string
+    // (fast server response — tab finished loading before execNavigate ran).
     await sleep(300);
     return;
   }
@@ -41,5 +58,15 @@ function normalizeUrl(url) {
     return `${u.origin}${u.pathname}${u.search}`;
   } catch {
     return url;
+  }
+}
+
+function samePathname(url1, url2) {
+  try {
+    const u1 = new URL(url1);
+    const u2 = new URL(url2);
+    return u1.origin === u2.origin && u1.pathname === u2.pathname;
+  } catch {
+    return false;
   }
 }

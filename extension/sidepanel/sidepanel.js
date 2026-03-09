@@ -647,13 +647,13 @@ btnRunAll.addEventListener("click", async () => {
 // Reset — aborts any active run, then clears all stuck state in the service worker
 btnNavA.addEventListener("click", () => {
   chrome.tabs.update({
-    url: "https://appriserisksolutions--appriseuat.sandbox.lightning.force.com/lightning/n/Landing_Zone"
+    url: "https://appriserisksolutions--appriseuat.sandbox.lightning.force.com/lightning/n/Quality_Review"
   });
 });
 
 btnNavV.addEventListener("click", () => {
   chrome.tabs.update({
-    url: "https://vxtest.valex.com.au/valfirm/order_test_jobs.php"
+    url: "https://vxtest.valex.com.au/valfirm/job-order-new.php"
   });
 });
 

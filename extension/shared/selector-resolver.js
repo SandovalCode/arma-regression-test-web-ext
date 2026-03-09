@@ -160,7 +160,10 @@ async function resolveCSS(selector, tabId, contextId, cdp) {
     (function() {
       const el = ${getEl};
       if (!el) return null;
+      const s = window.getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
       const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return null;
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     })()
   `;
@@ -178,7 +181,10 @@ async function resolveXPath(xpath, tabId, contextId, cdp) {
       );
       const el = result.singleNodeValue;
       if (!el) return null;
+      const s = window.getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
       const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return null;
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     })()
   `;
@@ -224,7 +230,10 @@ async function resolveAria(spec, tabId, contextId, cdp) {
 
       const el = candidates.find(matches);
       if (!el) return null;
+      const s = window.getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
       const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return null;
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     })()
   `;
@@ -238,7 +247,10 @@ async function resolvePierce(cssSelector, tabId, contextId, cdp) {
     (function piercedQS(root, sel) {
       const found = root.querySelector(sel);
       if (found) {
+        const s = window.getComputedStyle(found);
+        if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
         const r = found.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return null;
         return { x: r.left, y: r.top, width: r.width, height: r.height };
       }
       for (const el of root.querySelectorAll('*')) {
@@ -273,7 +285,10 @@ async function resolvePierceChain(selectorStr, tabId, contextId, cdp) {
           root = el.shadowRoot;
           if (!root) return null;
         } else {
+          const s = window.getComputedStyle(el);
+          if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
           const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return null;
           return { x: r.left, y: r.top, width: r.width, height: r.height };
         }
       }
@@ -291,7 +306,10 @@ async function resolveText(text, tabId, contextId, cdp) {
       const text = ${JSON.stringify(text)};
       const tags = 'a,button,span,div,td,th,li,label,p,h1,h2,h3,h4,h5,h6,input[type="button"],input[type="submit"]';
       const el = [...document.querySelectorAll(tags)].find(e => {
-        if (e.offsetParent === null) return false;
+        const s = window.getComputedStyle(e);
+        if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return false;
+        const r = e.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return false;
         // For input[type="submit"] / input[type="button"], the label is in .value, not textContent
         if (e.tagName === 'INPUT') return e.value === text;
         return e.textContent.trim() === text;
@@ -324,7 +342,10 @@ async function tryResolveCDPDom(selectorStr, tabId, cdp) {
     const boxRes = await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: `function() {
+        const s = window.getComputedStyle(this);
+        if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
         const r = this.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return null;
         return { x: r.left, y: r.top, width: r.width, height: r.height };
       }`,
       returnByValue: true

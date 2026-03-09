@@ -20,22 +20,29 @@ export async function execChange(step, tabId, contextId, cdp) {
   const tagRes = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration:
-      'function() { return { tag: this.tagName, cls: this.className ?? "", inputType: this.type ?? "" }; }',
+      'function() { return { tag: this.tagName, cls: this.className ?? "", inputType: this.type ?? "", name: this.name ?? "" }; }',
     returnByValue: true
   });
   const {
     tag: tagName = "",
     cls: className = "",
-    inputType = ""
+    inputType = "",
+    name: elementName = ""
   } = tagRes?.result?.value ?? {};
 
   // A step recorded from a <select> always has step.label set
   const isSelectStep = tagName === "SELECT" || step.label !== undefined;
 
-  // Custom autocomplete inputs (class contains "autocomplete") need partial typing
-  // to trigger their AJAX dropdown, then a click on the matching result.
-  // All other inputs get the full value inserted directly.
+  // Custom autocomplete inputs (class contains "autocomplete") get the full value
+  // inserted directly, EXCEPT entity-lookup fields whose name ends with "_id_hc"
+  // (e.g. cl_id_hc, us_id_hc). Those drive an AJAX partial-search endpoint that
+  // returns candidates from a prefix query, so only the first 10 chars are typed
+  // to trigger the dropdown; tryClickAutocompleteOption then clicks the right result.
   const isAutocompleteInput = className.split(/\s+/).includes("autocomplete");
+  const isPartialSearchAutocomplete =
+    isAutocompleteInput &&
+    elementName.toLowerCase().endsWith("_id_hc") &&
+    !elementName.toLowerCase().includes("address");
 
   // Search inputs (type="search") drive a live search panel that must remain open
   // for the next step to click a result. Dispatching blur or change causes the panel
@@ -96,16 +103,25 @@ export async function execChange(step, tabId, contextId, cdp) {
     );
     await sleep(80);
   } else {
+    // Use DOM.focus (real CDP keyboard focus) so Input.insertText lands on this element,
+    // then clear any existing value before typing.
+    await cdp(tabId, "DOM.focus", { objectId }).catch(() =>
+      cdp(tabId, "Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: "function() { this.focus(); }",
+        returnByValue: true
+      })
+    );
+    await sleep(80);
     await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration:
-        'function() { this.focus(); this.select(); this.value = ""; }',
+      functionDeclaration: 'function() { this.select(); this.value = ""; }',
       returnByValue: true
     });
 
     if (value) {
       await cdp(tabId, "Input.insertText", {
-        text: isAutocompleteInput ? value.slice(0, 10) : value
+        text: isPartialSearchAutocomplete ? value.slice(0, 10) : value
       });
     }
 

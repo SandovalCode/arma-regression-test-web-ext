@@ -217,6 +217,24 @@ export async function runRecording(recording, tabId, stepDelay) {
           );
         }
 
+        // After a click/doubleClick followed by a navigate step, poll briefly so that
+        // slow async JS button handlers have time to start navigation before execNavigate
+        // runs. Once the tab transitions to "loading", execNavigate's samePathname checks
+        // will follow the browser's redirect instead of forcing the stale recorded URL.
+        if (
+          (step.type === "click" || step.type === "doubleClick") &&
+          i + 1 < recording.steps.length &&
+          recording.steps[i + 1].type === "navigate" &&
+          !replayState.aborted
+        ) {
+          const deadline = Date.now() + 1000;
+          while (Date.now() < deadline && !replayState.aborted) {
+            await new Promise((r) => setTimeout(r, 100));
+            const tc = await chrome.tabs.get(tabId).catch(() => null);
+            if (!tc || tc.status === "loading") break;
+          }
+        }
+
         // Auto: waitForPageLoad after navigate or selectOption (which may trigger navigation)
         if (
           (step.type === "navigate" || step.type === "selectOption") &&

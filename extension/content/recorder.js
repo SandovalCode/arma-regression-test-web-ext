@@ -436,6 +436,27 @@
     )
       return;
 
+    // If the click lands inside an autocomplete popup, capture the option's displayed
+    // text and pre-fill pendingInputChange so the subsequent change/blur step records
+    // the full option text — not a partial typed value or a library-set code.
+    const autocompletePopup = el.closest('div.autocomplete, [id^="popup_"]');
+    if (autocompletePopup) {
+      const optionText = (el.innerText ?? el.textContent ?? "").trim();
+      if (optionText) {
+        // Derive associated input from popup id: popup_vxXXX → input_vxXXX
+        const vxSuffix = (autocompletePopup.id ?? "").replace(/^popup_/, "");
+        let inputEl = vxSuffix ? document.getElementById(`input_${vxSuffix}`) : null;
+        // Fallback: nearest autocomplete input in the same container
+        if (!inputEl) {
+          inputEl = autocompletePopup.parentElement
+            ?.querySelector('input[type="text"].autocomplete');
+        }
+        if (inputEl) {
+          pendingInputChange = { el: inputEl, value: optionText };
+        }
+      }
+    }
+
     const rect = el.getBoundingClientRect();
     const offsetX = Math.round(e.clientX - rect.left);
     const offsetY = Math.round(e.clientY - rect.top);
@@ -543,8 +564,12 @@
       return;
     }
 
-    // Plain text input
-    const value = pendingInputChange?.el === el ? el.value : (el.value ?? "");
+    // Plain text input — prefer the value pre-set from an autocomplete option click
+    // (pendingInputChange.value) over re-reading el.value, which may be a library code
+    // or not yet updated when the change event fires.
+    const value = pendingInputChange?.el === el
+      ? (pendingInputChange.value ?? el.value)
+      : (el.value ?? "");
     pendingInputChange = null;
     const selectors = generateSelectors(el);
     sendStep({
@@ -576,7 +601,9 @@
     setTimeout(() => {
       // If handleChange already fired (change event arrived within the delay), skip.
       if (!pendingInputChange || pendingInputChange.el !== capturedEl) return;
-      const value = capturedEl.value ?? "";
+      // Use the option text pre-set from an autocomplete click if available,
+      // otherwise fall back to the input's current value.
+      const value = pendingInputChange.value ?? capturedEl.value ?? "";
       pendingInputChange = null;
       const selectors = generateSelectors(capturedEl);
       sendStep({
@@ -688,6 +715,27 @@
     "Shift"
   ]);
 
+  // Keys that are only cursor/selection movement inside a text field.
+  // They don't affect the final value (captured by change/input) and are
+  // inserted in full during replay, so recording them is unnecessary noise.
+  const INPUT_NAV_KEYS = new Set([
+    "Shift", "Meta", "Tab", "Backspace",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "Home", "End", "PageUp", "PageDown"
+  ]);
+
+  function isTextInput(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === "TEXTAREA") return true;
+    if (tag === "INPUT") {
+      const t = (el.type || "text").toLowerCase();
+      return t === "text" || t === "search" || t === "email" ||
+             t === "password" || t === "url" || t === "tel" || t === "number";
+    }
+    return false;
+  }
+
   function handleKeyDown(e) {
     // Clipboard shortcuts are handled by copy/paste events — skip them here
     if (
@@ -695,6 +743,10 @@
       (e.key === "c" || e.key === "v" || e.key === "x")
     )
       return;
+
+    // Skip cursor/selection-only keys when focus is inside a text input —
+    // the value is captured by change/input events and replayed in full.
+    if (INPUT_NAV_KEYS.has(e.key) && isTextInput(e.target)) return;
 
     // Only record modifier combos or special keys
     if (!SPECIAL_KEYS.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey)
@@ -709,6 +761,10 @@
       (e.key === "c" || e.key === "v" || e.key === "x")
     )
       return;
+
+    // Same filter as handleKeyDown
+    if (INPUT_NAV_KEYS.has(e.key) && isTextInput(e.target)) return;
+
     if (!SPECIAL_KEYS.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey)
       return;
     sendStep({ type: "keyUp", target: "main", key: e.key, ...frameInfo });
