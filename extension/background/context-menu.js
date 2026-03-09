@@ -30,6 +30,11 @@ chrome.contextMenus.removeAll(() => {
     title: "Wait for time",
     contexts: ["all"]
   });
+  chrome.contextMenus.create({
+    id: "record-wait-refresh",
+    title: "Wait for element (auto-refresh)",
+    contexts: ["all"]
+  });
 });
 
 chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
@@ -40,7 +45,8 @@ chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
       "record-wait",
       "record-variable",
       "record-paste-variable",
-      "record-wait-time"
+      "record-wait-time",
+      "record-wait-refresh"
     ].includes(_info.menuItemId)
   )
     return;
@@ -104,6 +110,13 @@ chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
       selectors: elInfo.selectors,
       offsetX: elInfo.offsetX,
       offsetY: elInfo.offsetY,
+      ...(elInfo.frame?.length ? { frame: elInfo.frame } : {})
+    };
+  } else if (_info.menuItemId === "record-wait-refresh") {
+    step = {
+      type: "waitForElementWithRefresh",
+      target: "main",
+      selectors: elInfo.selectors,
       ...(elInfo.frame?.length ? { frame: elInfo.frame } : {})
     };
   } else {

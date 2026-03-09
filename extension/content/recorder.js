@@ -122,16 +122,19 @@
     return el;
   }
 
+  // data-* attributes that look unique at record time but change every render/run
+  const INJECTED_ATTR_PREFIXES = ["data-dashlane-", "data-lastpass-", "data-1p-"];
+  const SKIP_DATA_ATTRS = new Set([
+    "data-aura-rendered-by", // Aura internal render ID
+    "data-ownerid",          // Aura component ownership ID, regenerated every render
+    "data-recordid"          // Salesforce record ID, changes per record instance
+  ]);
+
   // Builds a pierce-chain selector traversing shadow DOM boundaries:
   // e.g. "lightning-button-icon >>> button.slds-button"
   // Each segment identifies the element within its own shadow root context.
   function buildSegmentInRoot(el, root) {
     const tag = el.tagName.toLowerCase();
-    const INJECTED_ATTR_PREFIXES = [
-      "data-dashlane-",
-      "data-lastpass-",
-      "data-1p-"
-    ];
 
     if (el.id) {
       const sel = `#${CSS.escape(el.id)}`;
@@ -145,12 +148,14 @@
     for (const attr of el.attributes) {
       if (!attr.name.startsWith("data-") || !attr.value) continue;
       if (INJECTED_ATTR_PREFIXES.some((p) => attr.name.startsWith(p))) continue;
-      if (attr.name === "data-aura-rendered-by") continue; // Aura internal, not stable
+      if (SKIP_DATA_ATTRS.has(attr.name)) continue;
       // Skip LWC scoping attributes (lwc-xxxxxxx-host, etc.)
       if (/^lwc-/.test(attr.name)) continue;
       const sel = `${tag}[${attr.name}="${CSS.escape(attr.value)}"]`;
       try {
         if ((root.querySelectorAll?.(sel) ?? []).length === 1) return sel;
+        // data-refid identifies the field type — stable across runs; first match is correct
+        if (attr.name === "data-refid") return sel;
       } catch (e) {
         console.error(e);
       }
@@ -256,17 +261,16 @@
     // Prefer id — CSS.escape handles any id value (leading underscores, digits, etc.)
     if (el.id) return `#${CSS.escape(el.id)}`;
 
-    // Prefer unique data-* attribute (skip browser-extension injected attributes)
-    const INJECTED_ATTR_PREFIXES = [
-      "data-dashlane-",
-      "data-lastpass-",
-      "data-1p-"
-    ];
+    // Prefer unique data-* attribute (skip injected and Salesforce/Aura dynamic IDs)
     for (const attr of el.attributes) {
       if (!attr.name.startsWith("data-") || !attr.value) continue;
       if (INJECTED_ATTR_PREFIXES.some((p) => attr.name.startsWith(p))) continue;
+      if (SKIP_DATA_ATTRS.has(attr.name)) continue;
       const sel = `${el.tagName.toLowerCase()}[${attr.name}="${CSS.escape(attr.value)}"]`;
       if (qsAll(sel) === 1) return sel;
+      // data-refid identifies the field type (e.g. "recordId" = a lookup link) — stable
+      // across runs even when multiple such links exist; first match is correct.
+      if (attr.name === "data-refid") return sel;
     }
 
     // name attribute (inputs, selects)

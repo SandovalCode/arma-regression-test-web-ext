@@ -333,6 +333,7 @@ const STEP_ICONS = {
   paste: "📄",
   scroll: "📜",
   waitForElement: "⏳",
+  waitForElementWithRefresh: "🔄",
   setViewport: "🖥️",
   copyVariable: "📌",
   pasteVariable: "📋",
@@ -388,6 +389,8 @@ function stepLabel(step) {
       return { main: "Scroll", sub: "" };
     case "waitForElement":
       return { main: "Wait for element", sub: selectorHint };
+    case "waitForElementWithRefresh":
+      return { main: "Wait + refresh", sub: selectorHint };
     case "setViewport":
       return { main: `Viewport ${step.width}×${step.height}`, sub: "" };
     case "copyVariable":

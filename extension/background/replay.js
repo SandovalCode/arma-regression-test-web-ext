@@ -10,6 +10,17 @@ import {
 import { cdp, broadcast, getStepDetail } from "./utils.js";
 import { startKeepalive, stopKeepalive } from "./keepalive.js";
 
+// Strip text/ selectors before using them in auto-prepended waitForElement steps.
+// text/ selectors embed the element's visible text at record time, which is often
+// a dynamic value (e.g. a job ID) that changes between runs — making waitForElement
+// time out even though the element is present.
+function selectorsForWait(selectors) {
+  const filtered = selectors
+    .map((group) => group.filter((sel) => !String(sel).startsWith("text/")))
+    .filter((group) => group.length > 0);
+  return filtered.length > 0 ? filtered : selectors; // fall back to original if all were text/
+}
+
 // ── Replay ─────────────────────────────────────────────────────────────────────
 export async function runRecording(recording, tabId, stepDelay) {
   if (replayState.active) return; // prevent concurrent runs
@@ -126,7 +137,7 @@ export async function runRecording(recording, tabId, stepDelay) {
             await executeStep(
               {
                 type: "waitForElement",
-                selectors: step.selectors,
+                selectors: selectorsForWait(step.selectors),
                 target: step.target
               },
               tabId,
