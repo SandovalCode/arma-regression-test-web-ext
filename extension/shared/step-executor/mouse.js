@@ -10,18 +10,24 @@ import {
 
 // ── click ──────────────────────────────────────────────────────────────────────
 
-export async function execClick(step, tabId, contextId, cdp) {
+export async function execClick(step, tabId, contextId, cdp, iframeOffset = null) {
   // Resolve objectId first so we can scroll into view before clicking (Playwright approach).
   // Input.dispatchMouseEvent expects viewport-relative coordinates. Scrolling the element
   // into view guarantees getBoundingClientRect() returns usable viewport coords.
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
 
+  // iframeOffset: when the element is inside an iframe, getBoundingClientRect() returns
+  // coordinates relative to the iframe's own viewport. Input.dispatchMouseEvent needs
+  // main-page viewport coordinates, so we add the iframe's position in the main page.
+  const ox = iframeOffset?.x ?? 0;
+  const oy = iframeOffset?.y ?? 0;
+
   let cx, cy;
   if (objectId) {
     const box = await scrollIntoViewAndGetRect(objectId, tabId, cdp);
     if (box) {
-      cx = box.x + (step.offsetX ?? 0);
-      cy = box.y + (step.offsetY ?? 0);
+      cx = box.x + (step.offsetX ?? 0) + ox;
+      cy = box.y + (step.offsetY ?? 0) + oy;
     }
   }
   if (cx == null) {
@@ -31,8 +37,8 @@ export async function execClick(step, tabId, contextId, cdp) {
       contextId,
       cdp
     );
-    cx = x + (step.offsetX ?? 0);
-    cy = y + (step.offsetY ?? 0);
+    cx = x + (step.offsetX ?? 0) + ox;
+    cy = y + (step.offsetY ?? 0) + oy;
   }
 
   const hasNav = step.assertedEvents?.some((e) => e.type === "navigation");
@@ -89,10 +95,14 @@ export async function execClick(step, tabId, contextId, cdp) {
   // fires a real browser click event. A second synthetic click would toggle any
   // dropdown/toggle button closed immediately after it opens.
   if (objectId) {
+    // Synthetic events fire on the element in its own execution context (the iframe).
+    // clientX/clientY must be iframe-viewport-relative (i.e. without the iframeOffset).
+    const elemCx = cx - ox;
+    const elemCy = cy - oy;
     await cdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: `function() {
-        const cx = ${cx}, cy = ${cy};
+        const cx = ${elemCx}, cy = ${elemCy};
         ['mouseenter', 'mouseover', 'mousedown', 'mouseup'].forEach(type => {
           this.dispatchEvent(new MouseEvent(type, {
             view: window, bubbles: true, cancelable: true,
@@ -112,14 +122,16 @@ export async function execClick(step, tabId, contextId, cdp) {
 
 // ── doubleClick ────────────────────────────────────────────────────────────────
 
-export async function execDoubleClick(step, tabId, contextId, cdp) {
+export async function execDoubleClick(step, tabId, contextId, cdp, iframeOffset = null) {
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  const ox = iframeOffset?.x ?? 0;
+  const oy = iframeOffset?.y ?? 0;
   let cx, cy;
   if (objectId) {
     const box = await scrollIntoViewAndGetRect(objectId, tabId, cdp);
     if (box) {
-      cx = box.x + (step.offsetX ?? 0);
-      cy = box.y + (step.offsetY ?? 0);
+      cx = box.x + (step.offsetX ?? 0) + ox;
+      cy = box.y + (step.offsetY ?? 0) + oy;
     }
   }
   if (cx == null) {
@@ -129,8 +141,8 @@ export async function execDoubleClick(step, tabId, contextId, cdp) {
       contextId,
       cdp
     );
-    cx = x + (step.offsetX ?? 0);
-    cy = y + (step.offsetY ?? 0);
+    cx = x + (step.offsetX ?? 0) + ox;
+    cy = y + (step.offsetY ?? 0) + oy;
   }
 
   await dispatchMouse(tabId, "mouseMoved", cx, cy, "none", 0, cdp);
@@ -142,14 +154,16 @@ export async function execDoubleClick(step, tabId, contextId, cdp) {
 
 // ── hover ──────────────────────────────────────────────────────────────────────
 
-export async function execHover(step, tabId, contextId, cdp) {
+export async function execHover(step, tabId, contextId, cdp, iframeOffset = null) {
   const objectId = await resolveObjectId(step.selectors, tabId, contextId, cdp);
+  const ox = iframeOffset?.x ?? 0;
+  const oy = iframeOffset?.y ?? 0;
   let cx, cy;
   if (objectId) {
     const box = await scrollIntoViewAndGetRect(objectId, tabId, cdp);
     if (box) {
-      cx = box.x + (step.offsetX ?? 0);
-      cy = box.y + (step.offsetY ?? 0);
+      cx = box.x + (step.offsetX ?? 0) + ox;
+      cy = box.y + (step.offsetY ?? 0) + oy;
     }
   }
   if (cx == null) {
@@ -159,8 +173,8 @@ export async function execHover(step, tabId, contextId, cdp) {
       contextId,
       cdp
     );
-    cx = x + (step.offsetX ?? 0);
-    cy = y + (step.offsetY ?? 0);
+    cx = x + (step.offsetX ?? 0) + ox;
+    cy = y + (step.offsetY ?? 0) + oy;
   }
   await dispatchMouse(tabId, "mouseMoved", cx, cy, "none", 0, cdp);
 }

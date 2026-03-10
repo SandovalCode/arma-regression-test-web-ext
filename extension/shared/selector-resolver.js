@@ -162,6 +162,8 @@ async function resolveCSS(selector, tabId, contextId, cdp) {
       if (!el) return null;
       const s = window.getComputedStyle(el);
       if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return null;
+      if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return null;
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return null;
       return { x: r.left, y: r.top, width: r.width, height: r.height };
@@ -183,6 +185,8 @@ async function resolveXPath(xpath, tabId, contextId, cdp) {
       if (!el) return null;
       const s = window.getComputedStyle(el);
       if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return null;
+      if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return null;
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return null;
       return { x: r.left, y: r.top, width: r.width, height: r.height };
@@ -232,6 +236,8 @@ async function resolveAria(spec, tabId, contextId, cdp) {
       if (!el) return null;
       const s = window.getComputedStyle(el);
       if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return null;
+      if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return null;
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return null;
       return { x: r.left, y: r.top, width: r.width, height: r.height };
@@ -249,6 +255,8 @@ async function resolvePierce(cssSelector, tabId, contextId, cdp) {
       if (found) {
         const s = window.getComputedStyle(found);
         if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
+        if (found.disabled || found.getAttribute('aria-disabled') === 'true') return null;
+        if ((found.tagName === 'BUTTON' || found.tagName === 'A' || found.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return null;
         const r = found.getBoundingClientRect();
         if (r.width === 0 && r.height === 0) return null;
         return { x: r.left, y: r.top, width: r.width, height: r.height };
@@ -287,6 +295,8 @@ async function resolvePierceChain(selectorStr, tabId, contextId, cdp) {
         } else {
           const s = window.getComputedStyle(el);
           if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
+          if (el.disabled || el.getAttribute('aria-disabled') === 'true') return null;
+          if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return null;
           const r = el.getBoundingClientRect();
           if (r.width === 0 && r.height === 0) return null;
           return { x: r.left, y: r.top, width: r.width, height: r.height };
@@ -308,6 +318,8 @@ async function resolveText(text, tabId, contextId, cdp) {
       const el = [...document.querySelectorAll(tags)].find(e => {
         const s = window.getComputedStyle(e);
         if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return false;
+        if (e.disabled || e.getAttribute('aria-disabled') === 'true') return false;
+        if ((e.tagName === 'BUTTON' || e.tagName === 'A' || e.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return false;
         const r = e.getBoundingClientRect();
         if (r.width === 0 && r.height === 0) return false;
         // For input[type="submit"] / input[type="button"], the label is in .value, not textContent
@@ -344,6 +356,8 @@ async function tryResolveCDPDom(selectorStr, tabId, cdp) {
       functionDeclaration: `function() {
         const s = window.getComputedStyle(this);
         if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
+        if (this.disabled || this.getAttribute('aria-disabled') === 'true') return null;
+        if ((this.tagName === 'BUTTON' || this.tagName === 'A' || this.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return null;
         const r = this.getBoundingClientRect();
         if (r.width === 0 && r.height === 0) return null;
         return { x: r.left, y: r.top, width: r.width, height: r.height };

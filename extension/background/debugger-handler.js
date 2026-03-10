@@ -4,7 +4,11 @@ import { replayState, frameContextMap } from "./state.js";
 chrome.debugger.onEvent.addListener((_source, method, params) => {
   if (method === "Runtime.executionContextCreated") {
     const ctx = params.context;
-    if (ctx.auxData?.frameId) {
+    // Only store main-world contexts (isDefault: true).
+    // Isolated worlds (content scripts, extensions) have isDefault: false — if stored,
+    // they would overwrite the page's main-world context ID and cause selector evaluation
+    // to run in the wrong JS realm (content script isolated world vs. the page itself).
+    if (ctx.auxData?.frameId && ctx.auxData?.isDefault !== false) {
       frameContextMap.set(ctx.auxData.frameId, ctx.id);
     }
   }

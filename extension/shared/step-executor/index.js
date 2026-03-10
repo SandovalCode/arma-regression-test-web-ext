@@ -31,7 +31,7 @@ export async function executeStep(
   cdp,
   variables = new Map()
 ) {
-  const contextId = resolveContext(step, frameContextMap);
+  const { contextId, iframeOffset } = await resolveContext(step, frameContextMap, tabId, cdp);
 
   switch (step.type) {
     case "setViewport":
@@ -39,11 +39,11 @@ export async function executeStep(
     case "navigate":
       return execNavigate(step, tabId, cdp);
     case "click":
-      return execClick(step, tabId, contextId, cdp);
+      return execClick(step, tabId, contextId, cdp, iframeOffset);
     case "doubleClick":
-      return execDoubleClick(step, tabId, contextId, cdp);
+      return execDoubleClick(step, tabId, contextId, cdp, iframeOffset);
     case "hover":
-      return execHover(step, tabId, contextId, cdp);
+      return execHover(step, tabId, contextId, cdp, iframeOffset);
     case "change":
       return execChange(step, tabId, contextId, cdp);
     case "selectOption":
@@ -104,8 +104,63 @@ export async function executeStep(
 
 // ── Context resolution ─────────────────────────────────────────────────────────
 
-function resolveContext(step, _frameContextMap) {
-  if (!step.frame || step.frame.length === 0) return null;
-  // TODO: full iframe support via Page.getFrameTree lookup.
-  return null;
+// Resolves step.frame (array of integer indices, e.g. [0] = first child iframe)
+// to a CDP executionContextId and the iframe's {x, y} offset in the main viewport.
+//
+// The offset is needed because getBoundingClientRect() inside an iframe returns
+// coordinates relative to the iframe's own viewport origin, but Input.dispatchMouseEvent
+// expects coordinates relative to the main page's viewport. Adding the iframe's
+// top-left position (from the <iframe> element's getBoundingClientRect in the main frame)
+// converts iframe-relative coords to main-page-relative coords.
+async function resolveContext(step, frameContextMap, tabId, cdp) {
+  if (!step.frame || step.frame.length === 0) {
+    return { contextId: null, iframeOffset: null };
+  }
+
+  try {
+    const { frameTree } = await cdp(tabId, "Page.getFrameTree");
+    let node = frameTree;
+
+    for (const idx of step.frame) {
+      const children = node.childFrames ?? [];
+      if (idx >= children.length) return { contextId: null, iframeOffset: null };
+      node = children[idx];
+    }
+
+    const frameId = node.frame.id;
+
+    // Runtime.executionContextCreated events arrive asynchronously after Runtime.enable.
+    // Wait up to 2s for the iframe's execution context to appear.
+    const deadline = Date.now() + 2000;
+    while (!frameContextMap.has(frameId) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    const contextId = frameContextMap.get(frameId) ?? null;
+
+    // Resolve the <iframe> element's position in the main page viewport.
+    // DOM.getFrameOwner returns the nodeId of the <iframe> element in the parent document.
+    let iframeOffset = null;
+    try {
+      const { nodeId } = await cdp(tabId, "DOM.getFrameOwner", { frameId });
+      if (nodeId) {
+        const { object } = await cdp(tabId, "DOM.resolveNode", { nodeId });
+        if (object?.objectId) {
+          const res = await cdp(tabId, "Runtime.callFunctionOn", {
+            objectId: object.objectId,
+            functionDeclaration:
+              "function() { const r = this.getBoundingClientRect(); return { x: r.left, y: r.top }; }",
+            returnByValue: true
+          });
+          if (res?.result?.value) iframeOffset = res.result.value;
+        }
+      }
+    } catch (_) {
+      // DOM.getFrameOwner may fail for detached frames — safe to ignore
+    }
+
+    return { contextId, iframeOffset };
+  } catch (_) {
+    return { contextId: null, iframeOffset: null };
+  }
 }

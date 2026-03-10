@@ -89,8 +89,8 @@ export async function continueRecording(tabId, steps) {
         window.__recorderActive = false;
       }
     });
-  } catch (_) {
-    /* tab may not be ready yet, proceed anyway */
+  } catch (err) {
+    console.error(err);
   }
 
   recordingVarSnapshots.clear();

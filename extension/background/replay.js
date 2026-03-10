@@ -138,7 +138,8 @@ export async function runRecording(recording, tabId, stepDelay) {
               {
                 type: "waitForElement",
                 selectors: selectorsForWait(step.selectors),
-                target: step.target
+                target: step.target,
+                ...(step.frame ? { frame: step.frame } : {})
               },
               tabId,
               frameContextMap,
@@ -169,7 +170,8 @@ export async function runRecording(recording, tabId, stepDelay) {
               {
                 type: "waitForElement",
                 selectors: step.selectors,
-                target: step.target
+                target: step.target,
+                ...(step.frame ? { frame: step.frame } : {})
               },
               tabId,
               frameContextMap,

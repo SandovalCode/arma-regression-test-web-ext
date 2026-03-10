@@ -407,7 +407,13 @@
     const xpath = buildXPath(el);
     if (xpath) selectors.push([`xpath/${xpath}`]);
 
-    const text = el.textContent?.trim();
+    // Prefer innerText (visible rendered text only) over textContent.
+    // On Salesforce/LWC pages, textContent can include "[object Object]" from
+    // synthetic shadow internals or React virtual nodes, producing corrupt selectors.
+    // innerText skips hidden elements and SVG subtrees, giving a clean label.
+    const text = (
+      typeof el.innerText === "string" ? el.innerText : el.textContent ?? ""
+    ).trim();
     if (
       text &&
       text.length > 0 &&
