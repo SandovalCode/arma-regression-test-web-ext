@@ -28,6 +28,10 @@ export const recordingVarSnapshots = new Map();
 // Execution context map: frameId → executionContextId (populated via Runtime events)
 export const frameContextMap = new Map();
 
+// Network request tracking: counts in-flight requests during replay.
+// Used to wait for AJAX-driven content (e.g. wizard steps) to finish loading after a click.
+export const networkState = { pendingCount: 0 };
+
 // Last right-clicked element sent from the content script via STORE_CONTEXT_EL.
 // Wrapped in an object so both message-router.js and context-menu.js can mutate
 // it through the same shared reference (ES modules cannot re-assign imported bindings).

@@ -1,4 +1,4 @@
-import { replayState, frameContextMap } from "./state.js";
+import { replayState, frameContextMap, networkState } from "./state.js";
 
 // ── Debugger event listener ────────────────────────────────────────────────────
 chrome.debugger.onEvent.addListener((_source, method, params) => {
@@ -11,6 +11,18 @@ chrome.debugger.onEvent.addListener((_source, method, params) => {
     if (ctx.auxData?.frameId && ctx.auxData?.isDefault !== false) {
       frameContextMap.set(ctx.auxData.frameId, ctx.id);
     }
+  }
+
+  // Track in-flight network requests so replay can wait for AJAX-driven content
+  // (e.g. wizard steps) to finish loading after a click before continuing.
+  if (method === "Network.requestWillBeSent") {
+    networkState.pendingCount++;
+  }
+  if (
+    method === "Network.loadingFinished" ||
+    method === "Network.loadingFailed"
+  ) {
+    networkState.pendingCount = Math.max(0, networkState.pendingCount - 1);
   }
 });
 
@@ -63,6 +75,8 @@ chrome.debugger.onDetach.addListener((source, reason) => {
             await chrome.debugger.attach({ tabId }, "1.3");
             await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
             await chrome.debugger.sendCommand({ tabId }, "Page.enable");
+            await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+            networkState.pendingCount = 0;
             await chrome.debugger.sendCommand(
               { tabId },
               "Page.addScriptToEvaluateOnNewDocument",

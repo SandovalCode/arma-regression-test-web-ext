@@ -413,7 +413,9 @@ function appendFeedItem(step) {
   const li = document.createElement("li");
   li.className = "record-feed-item";
   li.dataset.type = step.type;
+  const num = recordFeed.children.length + 1;
   li.innerHTML = `
+    <span class="step-num">${num}</span>
     <span class="record-feed-icon">${icon}</span>
     <span class="record-feed-label">${escapeHtml(main)}</span>
     ${sub ? `<span class="record-feed-sub">${escapeHtml(sub)}</span>` : ""}
@@ -421,6 +423,13 @@ function appendFeedItem(step) {
   `;
   recordFeed.appendChild(li);
   li.scrollIntoView({ block: "nearest" });
+}
+
+function renumberFeed() {
+  Array.from(recordFeed.children).forEach((li, i) => {
+    const numEl = li.querySelector(".step-num");
+    if (numEl) numEl.textContent = i + 1;
+  });
 }
 
 // ── History toggle ─────────────────────────────────────────────────────────────
@@ -526,6 +535,7 @@ recordFeed.addEventListener("click", async (e) => {
   li.remove();
   state.recordingStepCount = Math.max(0, state.recordingStepCount - 1);
   stepCountEl.textContent = state.recordingStepCount;
+  renumberFeed();
 });
 
 recordFeed.addEventListener("dblclick", (e) => {

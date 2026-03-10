@@ -5,7 +5,8 @@ import {
   replayState,
   clipboardVars,
   variables,
-  frameContextMap
+  frameContextMap,
+  networkState
 } from "./state.js";
 import { cdp, broadcast, getStepDetail } from "./utils.js";
 import { startKeepalive, stopKeepalive } from "./keepalive.js";
@@ -66,6 +67,9 @@ export async function runRecording(recording, tabId, stepDelay) {
     // Enable CDP domains
     await cdp(tabId, "Runtime.enable");
     await cdp(tabId, "Page.enable");
+    // Network domain: track in-flight requests so post-click idle waits work.
+    await cdp(tabId, "Network.enable");
+    networkState.pendingCount = 0;
 
     // CDP presence causes the browser to emit PerformanceObserver entry types
     // that Salesforce Lightning's O11Y system doesn't recognise (internal enum value 2),
@@ -190,6 +194,13 @@ export async function runRecording(recording, tabId, stepDelay) {
         if (replayState.aborted) break;
         console.log(`[Replay] step ${i + 1}:`, JSON.stringify(step, null, 2));
 
+        // Snapshot pending count before the click so we only wait for requests
+        // that the click itself triggered, not pre-existing Salesforce background polls.
+        // const preClickCount =
+        //   (step.type === "click" || step.type === "doubleClick")
+        //     ? networkState.pendingCount
+        //     : 0;
+
         if (step.type === "wait") {
           // Countdown display: broadcast a tick every second instead of a plain sleep
           const totalMs = Math.max(0, step.duration ?? 0);
@@ -235,6 +246,56 @@ export async function runRecording(recording, tabId, stepDelay) {
             const tc = await chrome.tabs.get(tabId).catch(() => null);
             if (!tc || tc.status === "loading") break;
           }
+        }
+
+        // After a click/doubleClick NOT followed by a full navigation, wait for any
+        // AJAX requests triggered by the click to finish (e.g. wizard steps that load
+        // new content without a page navigation). Strategy:
+        //   1. Wait 50ms for the click's requests to start.
+        //   2. Only wait if pendingCount EXCEEDS the pre-click baseline — this filters
+        //      out Salesforce background polls that were already in-flight before the click.
+        //   3. Wait until count drops back to baseline (max 5s).
+        // if (
+        //   (step.type === "click" || step.type === "doubleClick") &&
+        //   !(i + 1 < recording.steps.length && recording.steps[i + 1].type === "navigate") &&
+        //   !replayState.aborted
+        // ) {
+        //   await new Promise((r) => setTimeout(r, 50));
+        //   if (networkState.pendingCount > preClickCount) {
+        //     const netDeadline = Date.now() + 5_000;
+        //     while (
+        //       networkState.pendingCount > preClickCount &&
+        //       Date.now() < netDeadline &&
+        //       !replayState.aborted
+        //     ) {
+        //       await new Promise((r) => setTimeout(r, 100));
+        //     }
+        //   }
+        // }
+
+        // Auto: after any click, watch for split-view-view wizard panels to finish mutating.
+        // On pages without those panels the observer exits instantly (no overhead).
+        // On wizard pages with unrelated clicks, exits after 200ms if no mutations start.
+        if (
+          (step.type === "click" || step.type === "doubleClick") &&
+          !replayState.aborted
+        ) {
+          await executeStep(
+            {
+              type: "waitForMutation",
+              selector: "[data-testid='split-view-view']",
+              settle: 100,
+              timeout: 8_000,
+              noMutationTimeout: 200
+            },
+            tabId,
+            frameContextMap,
+            clipboardVars,
+            cdp,
+            variables
+          ).catch((err) =>
+            console.warn("[Replay] waitForMutation failed (proceeding):", err.message)
+          );
         }
 
         // Auto: waitForPageLoad after navigate or selectOption (which may trigger navigation)

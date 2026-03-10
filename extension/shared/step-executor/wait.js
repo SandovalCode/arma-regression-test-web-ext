@@ -2,6 +2,69 @@ import { waitForSelector } from "../selector-resolver.js";
 import { STEP_TIMEOUT_MS, NAV_TIMEOUT_MS, POLLING_DOMAINS } from "../constants.js";
 import { sleep } from "./helpers.js";
 
+// ── waitForMutation ────────────────────────────────────────────────────────────
+// Watches one or more elements (matched by step.selector) for DOM mutations and
+// waits until the changes have settled — i.e. no new mutations for `settle` ms.
+//
+// Useful after clicks that trigger AJAX-driven partial re-renders (e.g. wizard
+// steps) where the target container changes but there is no full navigation.
+//
+// Step shape: { type: "waitForMutation", selector: "[data-testid='split-view-view']",
+//               settle: 300, timeout: 10000 }
+//
+// settle  — ms of mutation silence before resolving (default 300)
+// timeout — hard cap before giving up (default 10 000)
+
+export async function execWaitForMutation(step, tabId, contextId, cdp) {
+  const selector         = step.selector         ?? "";
+  const settle           = step.settle           ?? 300;
+  const timeout          = step.timeout          ?? 10_000;
+  // noMutationTimeout: how long to wait for the *first* mutation before giving up.
+  // Keep this short when called automatically after every click so unrelated clicks
+  // don't add meaningful delay on wizard pages.
+  const noMutationTimeout = step.noMutationTimeout ?? 500;
+
+  const expression = `
+    new Promise((resolve) => {
+      const els = document.querySelectorAll(${JSON.stringify(selector)});
+      if (els.length === 0) { resolve('no-elements'); return; }
+
+      let settleTimer = null;
+      let mutationSeen = false;
+
+      const obs = new MutationObserver(() => {
+        mutationSeen = true;
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => { obs.disconnect(); resolve('settled'); }, ${settle});
+      });
+
+      els.forEach(el => obs.observe(el, {
+        childList: true, subtree: true, attributes: true, characterData: true
+      }));
+
+      // If no mutations arrive within noMutationTimeout, content was already loaded.
+      const noMutationTimer = setTimeout(() => {
+        if (!mutationSeen) { obs.disconnect(); resolve('no-mutation'); }
+      }, ${noMutationTimeout});
+
+      // Hard cap
+      setTimeout(() => {
+        clearTimeout(noMutationTimer);
+        clearTimeout(settleTimer);
+        obs.disconnect();
+        resolve('timeout');
+      }, ${timeout});
+    })
+  `;
+
+  const params = { expression, awaitPromise: true, returnByValue: true };
+  if (contextId) params.contextId = contextId;
+
+  const res = await cdp(tabId, "Runtime.evaluate", params);
+  const outcome = res?.result?.value;
+  console.log(`[waitForMutation] selector="${selector}" outcome=${outcome}`);
+}
+
 const REFRESH_WAIT_CYCLE_MS = 4_000;  // time to look for element before each refresh
 const REFRESH_WAIT_MAX_MS   = 40_000; // total max duration
 

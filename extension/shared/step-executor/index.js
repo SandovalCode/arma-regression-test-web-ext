@@ -3,7 +3,7 @@ import { execNavigate } from "./navigate.js";
 import { execClick, execDoubleClick, execHover } from "./mouse.js";
 import { execChange, execSelectOption } from "./input.js";
 import { execKeyDown, execKeyUp } from "./keyboard.js";
-import { execWaitForElement, execWaitForElementWithRefresh, execWaitForPageLoad } from "./wait.js";
+import { execWaitForElement, execWaitForElementWithRefresh, execWaitForPageLoad, execWaitForMutation } from "./wait.js";
 import { execScroll } from "./scroll.js";
 import {
   execCopyVariableAtRecording,
@@ -58,6 +58,8 @@ export async function executeStep(
       return execWaitForElementWithRefresh(step, tabId, contextId, cdp);
     case "waitForPageLoad":
       return execWaitForPageLoad(tabId, cdp);
+    case "waitForMutation":
+      return execWaitForMutation(step, tabId, contextId, cdp);
     case "scroll":
       return execScroll(step, tabId, contextId, cdp);
     case "copy":
