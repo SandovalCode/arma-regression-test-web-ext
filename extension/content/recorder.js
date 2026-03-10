@@ -444,6 +444,9 @@
   // ── Event Handlers ────────────────────────────────────────────────────────────
 
   function handleClick(e) {
+    // Only record real user clicks. Synthetic events from other extensions or page JS
+    // (element.click(), dispatchEvent) have isTrusted=false and must be ignored.
+    if (!e.isTrusted) return;
     const el = getTarget(e);
     if (!el || el.tagName === "HTML" || el.tagName === "BODY") return;
     // Clicks on <select> and <option> are captured as selectOption steps via change event
@@ -514,6 +517,7 @@
   }
 
   function handleDoubleClick(e) {
+    if (!e.isTrusted) return;
     const el = getTarget(e);
     if (!el || el.tagName === "HTML" || el.tagName === "BODY") return;
 
