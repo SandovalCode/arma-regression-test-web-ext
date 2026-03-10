@@ -214,6 +214,18 @@
   let suppressChangeUntil = 0; // timestamp: suppress input/change steps after paste
   let _clickTimer = null; // double-click detection: delay single clicks
   let _pendingClickStep = null;
+  let _pendingClickNeedsRefresh = false;
+
+  // Returns true when the element is inside a Salesforce Lightning datatable
+  // grid cell — those cells refresh asynchronously so replay needs the
+  // waitForElementWithRefresh strategy instead of a plain waitForElement.
+  function needsRefreshWait(el) {
+    return !!(
+      el.closest('[role="gridcell"].cellContainer') ||
+      el.classList.contains("forceOutputLookup") ||
+      el.closest(".forceOutputLookup")
+    );
+  }
 
   // ── Send a step to the service worker ────────────────────────────────────────
   let _lastStepKey = "";
@@ -473,18 +485,24 @@
     // Delay sending so that a dblclick can cancel these and record doubleClick instead.
     clearTimeout(_clickTimer);
     _pendingClickStep = step;
+    _pendingClickNeedsRefresh = needsRefreshWait(el);
     _clickTimer = setTimeout(() => {
       if (_pendingClickStep) {
         // Auto-record a waitForElement before every click so replay waits for
         // the element to be present without requiring manual right-click setup.
+        // If the element is inside a Salesforce Lightning datatable cell, use
+        // waitForElementWithRefresh since those cells refresh asynchronously.
         sendStep({
-          type: "waitForElement",
+          type: _pendingClickNeedsRefresh
+            ? "waitForElementWithRefresh"
+            : "waitForElement",
           target: _pendingClickStep.target,
           selectors: _pendingClickStep.selectors,
           ...(_pendingClickStep.frame ? { frame: _pendingClickStep.frame } : {})
         });
         sendStep(_pendingClickStep);
         _pendingClickStep = null;
+        _pendingClickNeedsRefresh = false;
       }
     }, 260);
   }
