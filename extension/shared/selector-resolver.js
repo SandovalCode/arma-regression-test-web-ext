@@ -100,6 +100,22 @@ export async function waitForSelector(
       }
     }
 
+    // Presence-only fallback: element exists in DOM but has zero bounding rect.
+    // Common for radio/checkbox inputs styled with CSS (opacity:0, position:absolute,
+    // width:0/height:0) where the native control is hidden and replaced by a custom UI.
+    // waitForElement just needs to confirm the element is present — it does not need
+    // coordinates. resolveSelector (used for clicks) still requires non-zero dimensions.
+    for (const candidate of cssCandidates) {
+      try {
+        const present = await checkPresence(candidate[0], tabId, contextId, cdp);
+        if (present) {
+          console.log(`[waitForSelector] found via presence-only check: ${candidate[0]}`);
+          return { x: 0, y: 0, width: 0, height: 0 };
+        }
+        allPrimaryThrew = false; // CDP responded — not a debugger detach
+      } catch (_) {}
+    }
+
     if (allPrimaryThrew) {
       if (++consecutiveAllThrew >= 2) {
         // Every selector threw twice in a row — debugger is almost certainly detached.
@@ -208,7 +224,16 @@ async function resolveAria(spec, tabId, contextId, cdp) {
       const label = ${JSON.stringify(label)};
       const role  = ${JSON.stringify(role)};
 
-      function matches(el) {
+      function isVisible(el) {
+        const s = window.getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return false;
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 || r.height > 0;
+      }
+
+      function labelMatches(el) {
         // aria-label
         if (el.getAttribute('aria-label') === label) return true;
         // aria-labelledby
@@ -232,14 +257,12 @@ async function resolveAria(spec, tabId, contextId, cdp) {
         ? [...document.querySelectorAll('[role=' + JSON.stringify(role) + ']')]
         : [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label],[aria-labelledby]')];
 
-      const el = candidates.find(matches);
+      // Find the first candidate that matches the label AND is visible/enabled.
+      // Checking visibility inside the predicate (not after find) ensures we skip
+      // hidden elements with the same label and continue to the visible one.
+      const el = candidates.find(el => labelMatches(el) && isVisible(el));
       if (!el) return null;
-      const s = window.getComputedStyle(el);
-      if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return null;
-      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return null;
-      if ((el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return null;
       const r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return null;
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     })()
   `;
@@ -404,6 +427,21 @@ async function evalExpr(expression, tabId, contextId, cdp) {
   const val = res?.result?.value;
   if (!val) return null;
   return val; // { x, y, width, height }
+}
+
+// ── DOM-presence check (no visibility or bounding-rect requirement) ────────────
+// Returns true if document.querySelector finds the element regardless of its size.
+// Used by waitForSelector as a last-resort fallback for CSS-hidden form controls.
+
+async function checkPresence(selectorStr, tabId, contextId, cdp) {
+  const expression = `document.querySelector(${JSON.stringify(selectorStr)}) !== null`;
+  const params = { expression, returnByValue: true };
+  if (contextId) params.contextId = contextId;
+  // Let CDP errors (e.g. detached debugger) propagate — the caller uses thrown
+  // errors to detect that the debugger is gone and exit the polling loop fast.
+  const res = await cdp(tabId, "Runtime.evaluate", params);
+  if (res?.exceptionDetails) return false;
+  return res?.result?.value === true;
 }
 
 // ── Utils ──────────────────────────────────────────────────────────────────────

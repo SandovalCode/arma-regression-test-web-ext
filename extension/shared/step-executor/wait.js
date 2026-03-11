@@ -66,7 +66,7 @@ export async function execWaitForMutation(step, tabId, contextId, cdp) {
 }
 
 const REFRESH_WAIT_CYCLE_MS = 4_000;  // time to look for element before each refresh
-const REFRESH_WAIT_MAX_MS   = 40_000; // total max duration
+const REFRESH_WAIT_MAX_MS   = 120_000; // total max duration
 
 // ── waitForElement ─────────────────────────────────────────────────────────────
 

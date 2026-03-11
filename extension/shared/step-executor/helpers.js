@@ -24,11 +24,23 @@ export async function resolveObjectId(selectors, tabId, contextId, cdp) {
           .replace(/\[role=["']?\w+["']?\]$/, "")
           .trim();
         expression = `
-          [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label],[aria-labelledby]')]
-          .find(el =>
-            el.getAttribute('aria-label') === ${JSON.stringify(label)} ||
-            el.textContent.trim() === ${JSON.stringify(label)}
-          )
+          (function() {
+            function isVisible(el) {
+              const s = window.getComputedStyle(el);
+              if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return false;
+              if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+              const r = el.getBoundingClientRect();
+              return r.width > 0 || r.height > 0;
+            }
+            const lbl = ${JSON.stringify(label)};
+            return [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label],[aria-labelledby]')]
+              .find(el =>
+                isVisible(el) && (
+                  el.getAttribute('aria-label') === lbl ||
+                  el.textContent.trim() === lbl
+                )
+              );
+          })()
         `;
       } else if (sel.startsWith("pierce/")) {
         const css = sel.slice(7);

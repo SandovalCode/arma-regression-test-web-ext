@@ -58,7 +58,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
 
         case MSG.CONTINUE_RECORDING:
-          await continueRecording(payload.tabId, payload.steps);
+          await continueRecording(payload.tabId, payload.steps, payload.remainingSteps ?? []);
           sendResponse({ ok: true });
           break;
 

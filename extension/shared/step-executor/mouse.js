@@ -52,35 +52,60 @@ export async function execClick(step, tabId, contextId, cdp, iframeOffset = null
   // mouseenter, and the click must arrive after that handler completes.
   await sleep(80);
 
-  // Blur the previously focused element before clicking the new one — mirrors real
-  // browser behaviour and prevents Salesforce from setting aria-hidden on a panel
-  // while its search input still has focus (which triggers the O11Y error dialog).
-  // EXCEPTION: if the click target is inside a search dropdown/listbox, skipping
-  // blur is critical — blurring the search bar dismisses the dropdown and removes
-  // the target element from the DOM before mousePressed can land on it.
-  const insideSearchPanel = objectId
+  // Skip blur when blurring the active element would cause a side-effect that removes
+  // or resets the click target before mousePressed lands.  Two cases:
+  //   1. Explicit ARIA / search-panel containers (original guard).
+  //   2. Heuristic: the button and document.activeElement share a common ancestor that
+  //      is fixed/absolute-positioned (overlay, panel, drawer) — blurring inside such a
+  //      container often triggers a focusout handler that dismisses it.
+  const shouldSkipBlur = objectId
     ? await cdp(tabId, "Runtime.callFunctionOn", {
         objectId,
-        functionDeclaration:
-          'function() { return !!this.closest(\'[role="listbox"], [role="option"], .assistantPanel, .instant-result-item, [id^="suggestionsList"]\'); }',
+        functionDeclaration: `function() {
+          const el = this;
+          // Case 1 — explicit ARIA / Salesforce search-panel selectors
+          if (el.closest('[role="listbox"],[role="option"],.assistantPanel,.instant-result-item,[id^="suggestionsList"],dialog,[role="dialog"],[aria-modal="true"]')) return true;
+          // Case 2 — shared overlay ancestor heuristic
+          const active = document.activeElement;
+          if (!active || active === document.body || active === document.documentElement || !el.contains || el === active) return false;
+          let node = el.parentElement;
+          while (node && node !== document.body) {
+            if (node.contains(active)) {
+              const pos = window.getComputedStyle(node).position;
+              if (pos === 'fixed' || pos === 'absolute') return true;
+            }
+            node = node.parentElement;
+          }
+          return false;
+        }`,
         returnByValue: true
       })
         .then((r) => !!r?.result?.value)
         .catch(() => false)
     : false;
 
-  if (!insideSearchPanel) {
+  if (objectId) {
+    // Blur the previously focused element and focus the target in a single synchronous
+    // CDP call so the browser issues one coherent focus transition:
+    //   focusout(relatedTarget=button) → focusin(button)
+    // Doing these in two separate CDP calls leaves a gap where focus is nowhere,
+    // which causes framework focusout handlers to see relatedTarget=null and
+    // dismiss the panel/modal before mousePressed can land on the button.
+    await cdp(tabId, "Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function() {
+        if (!${shouldSkipBlur}) {
+          const active = document.activeElement;
+          if (active && active !== document.body && active !== this) active.blur();
+        }
+        this.focus();
+      }`,
+      returnByValue: true
+    }).catch(console.error);
+  } else if (!shouldSkipBlur) {
     await cdp(tabId, "Runtime.evaluate", {
       expression:
         "document.activeElement && document.activeElement !== document.body ? document.activeElement.blur() : undefined",
-      returnByValue: true
-    }).catch(console.error);
-  }
-
-  if (objectId) {
-    await cdp(tabId, "Runtime.callFunctionOn", {
-      objectId,
-      functionDeclaration: "function() { this.focus(); }",
       returnByValue: true
     }).catch(console.error);
   }
@@ -91,9 +116,11 @@ export async function execClick(step, tabId, contextId, cdp, iframeOffset = null
 
   // Belt-and-suspenders: fire synthetic JS events on the element so that
   // Salesforce LWC (and other frameworks) patched event handlers also fire.
-  // NOTE: 'click' is intentionally excluded — CDP mousePressed+mouseReleased already
-  // fires a real browser click event. A second synthetic click would toggle any
-  // dropdown/toggle button closed immediately after it opens.
+  // Also dispatch a synthetic 'click' for non-toggle buttons: CDP's mouseReleased
+  // should auto-generate a native click, but when the element has pointer-events:none
+  // children, focus transitions, or other interferences, that chain can break.
+  // Guard: skip the synthetic click for toggle/dropdown buttons (aria-expanded,
+  // aria-pressed, aria-haspopup) to avoid toggling them closed immediately.
   if (objectId) {
     // Synthetic events fire on the element in its own execution context (the iframe).
     // clientX/clientY must be iframe-viewport-relative (i.e. without the iframeOffset).
@@ -109,6 +136,18 @@ export async function execClick(step, tabId, contextId, cdp, iframeOffset = null
             clientX: cx, clientY: cy,
           }));
         });
+
+        // Explicit click for buttons that only listen to 'click' (not mousedown/up).
+        // Skip for toggle/dropdown controls to avoid double-toggling.
+        const isToggle = this.hasAttribute('aria-expanded') ||
+                         this.hasAttribute('aria-pressed') ||
+                         this.hasAttribute('aria-haspopup');
+        if (!isToggle) {
+          this.dispatchEvent(new MouseEvent('click', {
+            view: window, bubbles: true, cancelable: true,
+            clientX: cx, clientY: cy,
+          }));
+        }
 
         // Radio button fix for React controlled components:
         // React tracks input state internally. If we just set el.checked = true and

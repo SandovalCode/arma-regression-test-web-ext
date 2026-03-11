@@ -517,7 +517,8 @@ function renderEditSteps(steps) {
       <span class="edit-step-label">${escapeHtml(main)}</span>
       ${editableHtml}
       <button class="btn-debug-step${step.debug ? " active" : ""}" data-index="${i}" title="Pause replay here">⏸</button>
-      <button class="btn-continue-from-step" data-index="${i}" title="Continue recording from here">⏺</button>
+      <button class="btn-insert-from-step" data-index="${i}" title="Insert steps here (keeps following steps)">⏺</button>
+      <button class="btn-continue-from-step" data-index="${i}" title="Record from here (removes following steps)">✂</button>
       <button class="btn-delete-edit-step" title="Delete step">×</button>
     `;
     editStepsList.appendChild(li);
@@ -998,7 +999,30 @@ editStepsList.addEventListener("click", (e) => {
   renderEditSteps(editingRecording.steps);
 });
 
-// Continue recording from a specific step
+// Insert steps after a specific step (keeps the following steps)
+editStepsList.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".btn-insert-from-step");
+  if (!btn || !editingRecording) return;
+  const idx = Number(btn.dataset.index);
+  const steps = editingRecording.steps.slice(0, idx + 1);
+  const remainingSteps = editingRecording.steps.slice(idx + 1);
+
+  const tabId = await getActiveTabId();
+  if (!tabId) return alert("No active tab found.");
+
+  editOverlay.classList.add("hidden");
+  editingRecording = null;
+
+  recordFeed.innerHTML = "";
+  state.recordingStepCount = steps.length;
+  stepCountEl.textContent = steps.length;
+  setMode(RecordingState.RECORDING);
+  steps.forEach((step) => appendFeedItem(step));
+
+  await send(MSG.CONTINUE_RECORDING, { tabId, steps, remainingSteps });
+});
+
+// Continue recording from a specific step (removes following steps)
 editStepsList.addEventListener("click", async (e) => {
   const btn = e.target.closest(".btn-continue-from-step");
   if (!btn || !editingRecording) return;
@@ -1008,18 +1032,16 @@ editStepsList.addEventListener("click", async (e) => {
   const tabId = await getActiveTabId();
   if (!tabId) return alert("No active tab found.");
 
-  // Close the edit overlay
   editOverlay.classList.add("hidden");
   editingRecording = null;
 
-  // Set up the recording UI with the pre-existing steps
   recordFeed.innerHTML = "";
   state.recordingStepCount = steps.length;
   stepCountEl.textContent = steps.length;
   setMode(RecordingState.RECORDING);
   steps.forEach((step) => appendFeedItem(step));
 
-  await send(MSG.CONTINUE_RECORDING, { tabId, steps });
+  await send(MSG.CONTINUE_RECORDING, { tabId, steps, remainingSteps: [] });
 });
 
 // Debugger toggle — mark/unmark a step as a breakpoint

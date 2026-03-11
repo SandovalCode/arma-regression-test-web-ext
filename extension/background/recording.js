@@ -32,7 +32,7 @@ export async function startRecording(tabId) {
   };
 
   recordingVarSnapshots.clear();
-  Object.assign(recordingState, { active: true, tabId, steps: [firstStep] });
+  Object.assign(recordingState, { active: true, tabId, steps: [firstStep], remainingSteps: [] });
   startKeepalive();
   broadcast(MSG.RECORD_STEP, { step: firstStep });
 
@@ -48,34 +48,39 @@ export async function startRecording(tabId) {
 
 async function onNavCommitted(details) {
   if (!recordingState.active || details.tabId !== recordingState.tabId) return;
-  if (details.frameId !== 0) return; // only main-frame navigations
 
   // Skip internal browser URLs
   const url = details.url ?? "";
   if (!url || url.startsWith("chrome://") || url.startsWith("about:")) return;
   if (url.startsWith("chrome-extension://")) {
-    console.warn(
-      "[Recorder] Tab navigated to another extension's page — recording is paused." +
-      " Steps will resume when the tab returns to a web page." +
-      " (Is 'Salesforce Inspector Reloaded' or another extension intercepting this tab?)"
-    );
+    if (details.frameId === 0) {
+      console.warn(
+        "[Recorder] Tab navigated to another extension's page — recording is paused." +
+        " Steps will resume when the tab returns to a web page." +
+        " (Is 'Salesforce Inspector Reloaded' or another extension intercepting this tab?)"
+      );
+    }
     return;
   }
 
-  // Record a navigate step with the CORRECT destination URL
-  // (details.url is where we're arriving, not where we came from)
-  const step = {
-    type: "navigate",
-    url,
-    assertedEvents: [{ type: "navigation", url, title: "" }]
-  };
-  recordingState.steps.push(step);
-  broadcast(MSG.RECORD_STEP, { step });
+  // Only record a navigate step for main-frame navigations.
+  // Child frames navigating (e.g. split-view panels) don't produce a navigate step,
+  // but still need the recorder re-injected so interactions inside them are captured.
+  if (details.frameId === 0) {
+    const step = {
+      type: "navigate",
+      url,
+      assertedEvents: [{ type: "navigation", url, title: "" }]
+    };
+    recordingState.steps.push(step);
+    broadcast(MSG.RECORD_STEP, { step });
+  }
 
-  // Re-inject recorder into the new page
+  // Re-inject recorder into the specific frame that just navigated.
+  // Using frameIds targets only this frame (avoids re-injecting frames that didn't change).
   try {
     await chrome.scripting.executeScript({
-      target: { tabId: details.tabId, allFrames: true },
+      target: { tabId: details.tabId, frameIds: [details.frameId] },
       files: ["content/recorder.js"]
     });
   } catch (err) {
@@ -83,7 +88,7 @@ async function onNavCommitted(details) {
   }
 }
 
-export async function continueRecording(tabId, steps) {
+export async function continueRecording(tabId, steps, remainingSteps = []) {
   await disableConflictingExtensions();
 
   // Same cleanup as startRecording — reset any previous recorder session
@@ -100,7 +105,7 @@ export async function continueRecording(tabId, steps) {
   }
 
   recordingVarSnapshots.clear();
-  Object.assign(recordingState, { active: true, tabId, steps: [...steps] });
+  Object.assign(recordingState, { active: true, tabId, steps: [...steps], remainingSteps: [...remainingSteps] });
   startKeepalive();
 
   await chrome.scripting.executeScript({
@@ -134,10 +139,11 @@ export async function stopRecording(name, sendResponse) {
   }
 
   const id = crypto.randomUUID();
+  const allSteps = [...recordingState.steps, ...recordingState.remainingSteps];
   const saved = await saveRecording({
     id,
     title: name,
-    steps: recordingState.steps
+    steps: allSteps
   });
   broadcast(MSG.RECORDING_STATE, { recording: false });
   sendResponse({ ok: true, recording: saved });
@@ -179,7 +185,7 @@ export async function forceReset() {
     }
   }
   recordingVarSnapshots.clear();
-  Object.assign(recordingState, { active: false, tabId: null, steps: [] });
+  Object.assign(recordingState, { active: false, tabId: null, steps: [], remainingSteps: [] });
 
   // 2. Tear down any active replay
   if (replayState.active && replayState.tabId) {

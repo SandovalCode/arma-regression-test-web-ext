@@ -5,6 +5,7 @@ import { execChange, execSelectOption } from "./input.js";
 import { execKeyDown, execKeyUp } from "./keyboard.js";
 import { execWaitForElement, execWaitForElementWithRefresh, execWaitForPageLoad, execWaitForMutation } from "./wait.js";
 import { execScroll } from "./scroll.js";
+import { STEP_TIMEOUT_MS } from "../constants.js";
 import {
   execCopyVariableAtRecording,
   execPasteVariableAtRecording,
@@ -120,14 +121,23 @@ async function resolveContext(step, frameContextMap, tabId, cdp) {
   }
 
   try {
-    const { frameTree } = await cdp(tabId, "Page.getFrameTree");
-    let node = frameTree;
-
-    for (const idx of step.frame) {
-      const children = node.childFrames ?? [];
-      if (idx >= children.length) return { contextId: null, iframeOffset: null };
-      node = children[idx];
+    // SPA pages (e.g. split-view panels) create iframes dynamically after navigation.
+    // Poll Page.getFrameTree until the target frame index exists, up to STEP_TIMEOUT_MS.
+    const frameDeadline = Date.now() + STEP_TIMEOUT_MS;
+    let node = null;
+    while (Date.now() < frameDeadline) {
+      const { frameTree } = await cdp(tabId, "Page.getFrameTree");
+      let current = frameTree;
+      let found = true;
+      for (const idx of step.frame) {
+        const children = current.childFrames ?? [];
+        if (idx >= children.length) { found = false; break; }
+        current = children[idx];
+      }
+      if (found) { node = current; break; }
+      await new Promise((r) => setTimeout(r, 200));
     }
+    if (!node) return { contextId: null, iframeOffset: null };
 
     const frameId = node.frame.id;
 

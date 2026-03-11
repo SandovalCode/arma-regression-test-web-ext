@@ -880,6 +880,7 @@ body:has(#record-active:not(.hidden)) #record-section {
 
 .btn-delete-edit-step,
 .btn-debug-step,
+.btn-insert-from-step,
 .btn-continue-from-step {
   display: flex;
   align-items: center;
@@ -903,12 +904,17 @@ body:has(#record-active:not(.hidden)) #record-section {
   color: var(--accent);
   background: rgba(99, 102, 241, 0.1);
 }
-.btn-continue-from-step:hover {
+.btn-insert-from-step:hover {
   color: #22c55e;
   background: rgba(34, 197, 94, 0.1);
 }
+.btn-continue-from-step:hover {
+  color: #f97316;
+  background: rgba(249, 115, 22, 0.1);
+}
 .edit-step-item:hover .btn-delete-edit-step,
 .edit-step-item:hover .btn-debug-step,
+.edit-step-item:hover .btn-insert-from-step,
 .edit-step-item:hover .btn-continue-from-step {
   visibility: visible;
 }

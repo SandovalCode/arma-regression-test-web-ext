@@ -30,6 +30,25 @@ export async function execChange(step, tabId, contextId, cdp) {
     name: elementName = ""
   } = tagRes?.result?.value ?? {};
 
+  // Radio buttons and checkboxes: the click step already checked them.
+  // If an old recording has a spurious change step for one, just ensure it's
+  // checked and fire the events — never use Input.insertText on these.
+  if (inputType === "radio" || inputType === "checkbox") {
+    await cdp(tabId, "Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function() {
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'checked'
+        )?.set;
+        if (setter) setter.call(this, true);
+        this.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        this.dispatchEvent(new Event('input',  { bubbles: true, cancelable: true }));
+      }`,
+      returnByValue: true
+    }).catch(console.error);
+    return;
+  }
+
   // A step recorded from a <select> always has step.label set
   const isSelectStep = tagName === "SELECT" || step.label !== undefined;
 

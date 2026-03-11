@@ -2,7 +2,8 @@
 export const recordingState = {
   active: false,
   tabId: null,
-  steps: []
+  steps: [],
+  remainingSteps: [] // steps after the insertion point when continuing from edit
 };
 
 export const replayState = {

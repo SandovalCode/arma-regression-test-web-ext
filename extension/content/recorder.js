@@ -560,6 +560,8 @@
     if (Date.now() < suppressChangeUntil) return; // suppress post-paste input events
     const el = e.target;
     if (!el || !["INPUT", "TEXTAREA"].includes(el.tagName)) return;
+    // Radio buttons and checkboxes are fully captured by the click step — skip here.
+    if (el.type === "radio" || el.type === "checkbox") return;
     pendingInputChange = { el, value: el.value };
   }
 
@@ -569,6 +571,12 @@
     if (Date.now() < suppressChangeUntil) return; // suppress post-paste change events
     const el = e.target;
     if (!el) return;
+
+    // Radio buttons and checkboxes are fully captured by the click step.
+    // Recording a separate change step would cause execChange to run Input.insertText
+    // on the element (wrong) and dispatch blur/change events that can un-check the
+    // radio button that the click step just set in React/LWC controlled components.
+    if (el.type === "radio" || el.type === "checkbox") return;
 
     if (el.tagName === "SELECT") {
       // Record as a dedicated selectOption step with full option details
