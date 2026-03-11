@@ -56,7 +56,7 @@ export const RecordingState = {
 // Timeouts
 export const STEP_TIMEOUT_MS = 60_000; // max time per step (waitForElement)
 export const NAV_TIMEOUT_MS = 20_000; // max time for navigation to complete
-export const POLL_INTERVAL_MS = 500; // waitForElement polling interval
+export const POLL_INTERVAL_MS = 150; // waitForElement polling interval
 export const KEEPALIVE_MINS = 0.4; // alarm period to keep SW alive (~24s)
 
 export const MAX_HISTORY_ENTRIES = 100;

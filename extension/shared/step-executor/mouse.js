@@ -109,6 +109,23 @@ export async function execClick(step, tabId, contextId, cdp, iframeOffset = null
             clientX: cx, clientY: cy,
           }));
         });
+
+        // Radio button fix for React controlled components:
+        // React tracks input state internally. If we just set el.checked = true and
+        // dispatch 'change', React sees "old tracked value === new value" and skips
+        // the update. Using the native HTMLInputElement prototype setter bypasses
+        // React's property descriptor so it sees a real change.
+        // Also needed for LWC shadow DOM: 'change' is not composed by default so it
+        // won't cross shadow boundaries — but React 17+ attaches listeners to the
+        // React root (inside the shadow), so bubbling within the shadow is enough.
+        if (this.type === 'radio' && !this.checked) {
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'checked'
+          )?.set;
+          if (setter) setter.call(this, true);
+          this.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+          this.dispatchEvent(new Event('input',  { bubbles: true, cancelable: true }));
+        }
       }`,
       returnByValue: true
     }).catch(console.error);

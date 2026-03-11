@@ -315,17 +315,37 @@ async function resolveText(text, tabId, contextId, cdp) {
     (function() {
       const text = ${JSON.stringify(text)};
       const tags = 'a,button,span,div,td,th,li,label,p,h1,h2,h3,h4,h5,h6,input[type="button"],input[type="submit"]';
-      const el = [...document.querySelectorAll(tags)].find(e => {
+
+      function isVisible(e) {
         const s = window.getComputedStyle(e);
         if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return false;
         if (e.disabled || e.getAttribute('aria-disabled') === 'true') return false;
         if ((e.tagName === 'BUTTON' || e.tagName === 'A' || e.getAttribute('role') === 'button') && s.cursor === 'not-allowed') return false;
         const r = e.getBoundingClientRect();
-        if (r.width === 0 && r.height === 0) return false;
-        // For input[type="submit"] / input[type="button"], the label is in .value, not textContent
+        return r.width > 0 || r.height > 0;
+      }
+
+      function matches(e) {
+        if (!isVisible(e)) return false;
         if (e.tagName === 'INPUT') return e.value === text;
         return e.textContent.trim() === text;
-      });
+      }
+
+      // Recursive shadow-piercing search — LWC shadow roots are not reached by
+      // document.querySelectorAll, so we must descend into each shadowRoot manually.
+      function findInRoot(root) {
+        const found = [...root.querySelectorAll(tags)].find(matches);
+        if (found) return found;
+        for (const host of root.querySelectorAll('*')) {
+          if (host.shadowRoot) {
+            const r = findInRoot(host.shadowRoot);
+            if (r) return r;
+          }
+        }
+        return null;
+      }
+
+      const el = findInRoot(document);
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return { x: r.left, y: r.top, width: r.width, height: r.height };

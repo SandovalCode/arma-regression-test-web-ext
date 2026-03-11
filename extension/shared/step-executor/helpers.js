@@ -61,8 +61,23 @@ export async function resolveObjectId(selectors, tabId, contextId, cdp) {
       } else if (sel.startsWith("text/")) {
         const text = sel.slice(5);
         expression = `
-          [...document.querySelectorAll('a,button,span,div,td,th,li,label')]
-          .find(e => e.offsetParent !== null && e.textContent.trim() === ${JSON.stringify(text)})
+          (function() {
+            const t = ${JSON.stringify(text)};
+            const tags = 'a,button,span,div,td,th,li,label';
+            function findInRoot(root) {
+              const found = [...root.querySelectorAll(tags)]
+                .find(e => e.offsetParent !== null && e.textContent.trim() === t);
+              if (found) return found;
+              for (const host of root.querySelectorAll('*')) {
+                if (host.shadowRoot) {
+                  const r = findInRoot(host.shadowRoot);
+                  if (r) return r;
+                }
+              }
+              return null;
+            }
+            return findInRoot(document);
+          })()
         `;
       } else {
         // Use getElementById for #id selectors — LWC (Salesforce) patches document.querySelector
@@ -145,7 +160,7 @@ export async function scrollIntoViewAndGetRect(objectId, tabId, cdp) {
     returnByValue: true
   }).catch(console.error);
   // Brief settle after scroll so the viewport position stabilises
-  await sleep(100);
+  await sleep(30);
   const res = await cdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration:
