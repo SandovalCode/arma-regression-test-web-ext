@@ -14,7 +14,8 @@
     "sidePanel",
     "alarms",
     "webNavigation",
-    "contextMenus"
+    "contextMenus",
+    "management"
   ],
 
   "host_permissions": ["<all_urls>"],

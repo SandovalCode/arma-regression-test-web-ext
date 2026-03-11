@@ -55,23 +55,35 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 
     try {
       await new Promise((resolve) => {
-        const giveUpTimer = setTimeout(() => {
+        function cleanup() {
+          clearTimeout(giveUpTimer);
           chrome.tabs.onUpdated.removeListener(onUpdated);
+          chrome.webNavigation.onDOMContentLoaded.removeListener(onNavCommit);
+        }
+
+        const giveUpTimer = setTimeout(() => {
+          cleanup();
           console.warn("[Replay] Re-attach timed out (45s) — aborting");
           replayState.aborted = true;
           resolve();
         }, 45_000);
 
-        async function tryAttach() {
+        // committedUrl comes from webNavigation.onDOMContentLoaded — it is the real
+        // URL of the committed document, unlike chrome.tabs.get().url which can return
+        // a stale https:// value while the tab is actually on a chrome-extension:// page
+        // (e.g. Salesforce Inspector Reloaded opens its UI inside the current tab).
+        async function tryAttach(committedUrl) {
           if (attaching || replayState.aborted) return;
+
+          // Use the confirmed URL from webNavigation when available; otherwise fall back
+          // to tabs.get() — but note that tabs.get().url may be stale (see above).
+          const url = committedUrl ?? (await chrome.tabs.get(tabId).catch(() => null))?.url ?? "";
+          if (!url.startsWith("https://") && !url.startsWith("http://")) {
+            return; // tab is on an internal/extension page — wait for a real navigation
+          }
+
           attaching = true;
           try {
-            const tab = await chrome.tabs.get(tabId).catch(console.error);
-            const url = tab?.url ?? "";
-            if (!url.startsWith("https://") && !url.startsWith("http://")) {
-              attaching = false;
-              return; // tab is still on an internal/extension URL — wait for next update
-            }
             await chrome.debugger.attach({ tabId }, "1.3");
             await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
             await chrome.debugger.sendCommand({ tabId }, "Page.enable");
@@ -105,36 +117,53 @@ chrome.debugger.onDetach.addListener((source, reason) => {
             );
             frameContextMap.clear();
             console.log("[Replay] Debugger re-attached successfully");
-            clearTimeout(giveUpTimer);
-            chrome.tabs.onUpdated.removeListener(onUpdated);
+            cleanup();
             resolve();
           } catch (err) {
             attaching = false;
             if (err.message?.includes("already attached")) {
               console.log("[Replay] Debugger already re-attached by Chrome");
               frameContextMap.clear();
-              clearTimeout(giveUpTimer);
-              chrome.tabs.onUpdated.removeListener(onUpdated);
+              cleanup();
               resolve();
               return;
             }
             // Attach failed (tab may be mid-SSO or renderer not ready yet).
-            // Don't abort — wait for the next onUpdated event to try again.
+            // Don't abort — wait for the next event to try again.
             console.log(
               `[Replay] Re-attach attempt failed: ${err.message} — waiting for tab update…`
             );
           }
         }
 
-        function onUpdated(changedTabId) {
-          if (changedTabId !== tabId) return;
-          // Small delay for the renderer to initialize before we try to attach.
-          setTimeout(tryAttach, 300);
+        // webNavigation.onDOMContentLoaded fires only when a real document commits and
+        // provides the actual URL — use this as the primary re-attach trigger so we never
+        // attempt to attach while the tab is on a chrome-extension:// page.
+        function onNavCommit({ tabId: navTabId, url }) {
+          if (navTabId !== tabId) return;
+          if (url.startsWith("chrome-extension://")) {
+            console.warn(
+              "[Replay] Tab navigated to another extension's page — debugger re-attach paused." +
+              " Waiting for tab to return to a web page." +
+              " (Is 'Salesforce Inspector Reloaded' or another extension intercepting this tab?)"
+            );
+            return;
+          }
+          if (!url.startsWith("https://") && !url.startsWith("http://")) return;
+          setTimeout(() => tryAttach(url), 300);
         }
 
+        function onUpdated(changedTabId) {
+          if (changedTabId !== tabId) return;
+          // Secondary trigger (no URL available here — tryAttach will check tabs.get()).
+          // Small delay for the renderer to initialize before we try to attach.
+          setTimeout(() => tryAttach(null), 300);
+        }
+
+        chrome.webNavigation.onDOMContentLoaded.addListener(onNavCommit);
         chrome.tabs.onUpdated.addListener(onUpdated);
         // Also kick off an immediate attempt — tab may already be ready.
-        setTimeout(tryAttach, 500);
+        setTimeout(() => tryAttach(null), 500);
       });
     } finally {
       replayState.reattachPromise = null;

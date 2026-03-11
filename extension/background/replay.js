@@ -8,7 +8,7 @@ import {
   frameContextMap,
   networkState
 } from "./state.js";
-import { cdp, broadcast, getStepDetail } from "./utils.js";
+import { cdp, broadcast, getStepDetail, disableConflictingExtensions, restoreConflictingExtensions } from "./utils.js";
 import { startKeepalive, stopKeepalive } from "./keepalive.js";
 
 // Strip text/ selectors before using them in auto-prepended waitForElement steps.
@@ -41,6 +41,7 @@ export async function runRecording(recording, tabId, stepDelay) {
   frameContextMap.clear();
 
   startKeepalive();
+  await disableConflictingExtensions();
 
   // Start every run from a blank page so there's no leftover state from a
   // previous session. The first recorded step (navigate) will go to the real URL.
@@ -451,6 +452,7 @@ export async function runRecording(recording, tabId, stepDelay) {
     replayState.tabId = null;
     stopKeepalive();
     chrome.storage.session.remove("replaySuffix").catch(console.error);
+    await restoreConflictingExtensions();
   }
 }
 

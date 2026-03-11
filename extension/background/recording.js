@@ -1,11 +1,13 @@
 import { MSG } from "../shared/constants.js";
 import { saveRecording } from "../shared/storage.js";
 import { recordingState, replayState, recordingVarSnapshots } from "./state.js";
-import { broadcast } from "./utils.js";
+import { broadcast, disableConflictingExtensions, restoreConflictingExtensions } from "./utils.js";
 import { startKeepalive, stopKeepalive } from "./keepalive.js";
 
 // ── Recording ──────────────────────────────────────────────────────────────────
 export async function startRecording(tabId) {
+  await disableConflictingExtensions();
+
   // Always force-cleanup any previous recorder session first.
   // This resets window.__recorderActive so the re-injection guard doesn't block us.
   try {
@@ -50,13 +52,15 @@ async function onNavCommitted(details) {
 
   // Skip internal browser URLs
   const url = details.url ?? "";
-  if (
-    !url ||
-    url.startsWith("chrome://") ||
-    url.startsWith("chrome-extension://") ||
-    url.startsWith("about:")
-  )
+  if (!url || url.startsWith("chrome://") || url.startsWith("about:")) return;
+  if (url.startsWith("chrome-extension://")) {
+    console.warn(
+      "[Recorder] Tab navigated to another extension's page — recording is paused." +
+      " Steps will resume when the tab returns to a web page." +
+      " (Is 'Salesforce Inspector Reloaded' or another extension intercepting this tab?)"
+    );
     return;
+  }
 
   // Record a navigate step with the CORRECT destination URL
   // (details.url is where we're arriving, not where we came from)
@@ -80,6 +84,8 @@ async function onNavCommitted(details) {
 }
 
 export async function continueRecording(tabId, steps) {
+  await disableConflictingExtensions();
+
   // Same cleanup as startRecording — reset any previous recorder session
   try {
     await chrome.scripting.executeScript({
@@ -135,12 +141,14 @@ export async function stopRecording(name, sendResponse) {
   });
   broadcast(MSG.RECORDING_STATE, { recording: false });
   sendResponse({ ok: true, recording: saved });
+  await restoreConflictingExtensions();
 }
 
 export async function abortRecording() {
   recordingState.active = false;
   stopKeepalive();
   chrome.webNavigation.onDOMContentLoaded.removeListener(onNavCommitted);
+  await restoreConflictingExtensions();
   if (!recordingState.tabId) return;
   try {
     await chrome.scripting.executeScript({
