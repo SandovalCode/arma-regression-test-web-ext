@@ -101,8 +101,8 @@ export async function execWaitForElementWithRefresh(step, tabId, contextId, cdp)
   throw new Error(`waitForElementWithRefresh timed out after ${REFRESH_WAIT_MAX_MS / 1000}s. Tried: ${tried}`);
 }
 
-export async function execWaitForElement(step, tabId, contextId, cdp) {
-  await waitForSelector(step.selectors, tabId, contextId, cdp, STEP_TIMEOUT_MS);
+export async function execWaitForElement(step, tabId, contextId, cdp, frameInfo = null) {
+  await waitForSelector(step.selectors, tabId, contextId, cdp, STEP_TIMEOUT_MS, frameInfo);
 
   // Salesforce instant-result-item (search dropdown) triggers a fast internal
   // re-render after appearing — wait an extra second for it to settle.

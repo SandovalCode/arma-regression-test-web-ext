@@ -33,7 +33,7 @@ export async function executeStep(
   cdp,
   variables = new Map()
 ) {
-  const { contextId, iframeOffset } = await resolveContext(step, frameContextMap, tabId, cdp);
+  const { contextId, iframeOffset, frameId } = await resolveContext(step, frameContextMap, tabId, cdp);
 
   switch (step.type) {
     case "setViewport":
@@ -55,7 +55,8 @@ export async function executeStep(
     case "keyUp":
       return execKeyUp(step, tabId, cdp);
     case "waitForElement":
-      return execWaitForElement(step, tabId, contextId, cdp);
+      return execWaitForElement(step, tabId, contextId, cdp,
+        frameId ? { frameContextMap, frameId } : null);
     case "waitForElementWithRefresh":
       return execWaitForElementWithRefresh(step, tabId, contextId, cdp);
     case "waitForPageLoad":
@@ -153,7 +154,38 @@ async function resolveContext(step, frameContextMap, tabId, cdp) {
       await new Promise((r) => setTimeout(r, 100));
     }
 
-    const contextId = frameContextMap.get(frameId) ?? null;
+    let contextId = frameContextMap.get(frameId) ?? null;
+
+    // Validate that the context is alive. When the bot navigates to a page containing
+    // a new iframe, Chrome registers the iframe's blank-document context first (fast),
+    // then destroys it and registers the real content context once the iframe loads its
+    // src URL. If we grabbed the blank-document context it is already stale by the time
+    // we use it → "Cannot find context with specified id" in waitForSelector.
+    // Verify with a cheap no-op eval and re-poll for the replacement if needed.
+    if (contextId) {
+      const alive = await cdp(tabId, "Runtime.evaluate", {
+        contextId,
+        expression: "1",
+        returnByValue: true
+      }).then(() => true).catch(() => false);
+
+      if (!alive) {
+        console.log(`[resolveContext] context ${contextId} for frame ${frameId} is stale — re-polling`);
+        const refreshDeadline = Date.now() + 3000;
+        while (Date.now() < refreshDeadline) {
+          await new Promise((r) => setTimeout(r, 150));
+          const freshId = frameContextMap.get(frameId);
+          if (freshId && freshId !== contextId) {
+            const freshAlive = await cdp(tabId, "Runtime.evaluate", {
+              contextId: freshId,
+              expression: "1",
+              returnByValue: true
+            }).then(() => true).catch(() => false);
+            if (freshAlive) { contextId = freshId; break; }
+          }
+        }
+      }
+    }
 
     // Resolve the <iframe> element's position in the main page viewport.
     // DOM.getFrameOwner returns the nodeId of the <iframe> element in the parent document.
@@ -176,8 +208,8 @@ async function resolveContext(step, frameContextMap, tabId, cdp) {
       // DOM.getFrameOwner may fail for detached frames — safe to ignore
     }
 
-    return { contextId, iframeOffset };
+    return { contextId, iframeOffset, frameId };
   } catch (_) {
-    return { contextId: null, iframeOffset: null };
+    return { contextId: null, iframeOffset: null, frameId: null };
   }
 }

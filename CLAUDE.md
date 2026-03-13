@@ -156,6 +156,72 @@ lastContextMenuEl = { selectors, offsetX, offsetY, frame }  // last right-clicke
 - **400ms gap between steps**: the replay loop does `await new Promise(r => setTimeout(r, 400))` after each successful step
 - **Delete step during recording**: sidepanel sends `DELETE_STEP { index }` → SW does `splice(index, 1)` on `recordingState.steps`; sidepanel removes the `<li>` from the feed and decrements the step counter
 
+---
+
+## ⚠️ PROTECTED BEHAVIORS — DO NOT CHANGE WITHOUT EXPLICIT INSTRUCTION
+
+The following three behaviors are **load-bearing fixes** for specific production sites. They must **never be removed, bypassed, or weakened** unless the user explicitly says so. Each rule includes the exact code location so it can be verified.
+
+---
+
+### 1. `display:none` guard in `checkPresence` — Valex PHP wizard
+
+**File:** `extension/shared/selector-resolver.js` → function `checkPresence`
+
+**Rule:** `checkPresence` must return `false` for any element whose computed `display` is `"none"`.
+
+**Why it must not change:** The Valex site (`vxtest.valex.com.au`) uses a PHP multi-step wizard where all `<input type="submit" value="Next">` buttons are present in the DOM from page load but hidden with `display:none` until the current step is active. Without this guard, `waitForSelector`'s presence-only fallback finds the hidden button immediately, `waitForElement` resolves early, and `execClick` fires a CDP mouse event at coordinates `(0, 0)` — the click goes to the wrong place and the step shows a green tick but nothing actually happens in the page.
+
+**What must stay:**
+```js
+if (window.getComputedStyle(el).display === 'none') return false;
+```
+
+This guard allows `opacity:0` / `width:0/height:0` elements (custom-styled radio buttons, checkboxes) to still pass — only `display:none` is blocked.
+
+---
+
+### 2. Post-click `waitForMutation` split by frame context — React wizard in Salesforce iframe
+
+**File:** `extension/background/replay.js` → auto post-click block after `executeStep`
+
+**Rule:** After every `click` or `doubleClick`, there must be a `waitForMutation` step. For steps **inside an iframe** (`step.frame` is set), it must run in the iframe's execution context watching `.split-view-container, .allotment-module_splitViewContainer__rQnVa`. For steps in the **main frame**, it runs as before watching `[data-testid='split-view-view']`.
+
+**Why it must not change:** The Salesforce split-view page embeds a React single-page wizard inside an iframe. When the user clicks Next or Accept, React re-renders the wizard content. Without this wait, the next step fires before the DOM update settles and the following `waitForElement` finds stale or partially-rendered elements. The `if (step.frame && step.frame.length > 0)` branch is the critical path — **it must remain**. The main-frame branch is the existing behavior for all other pages.
+
+**What must stay:**
+```js
+if (step.frame && step.frame.length > 0) {
+  // waitForMutation in iframe context, selector: ".split-view-container, .allotment-module_splitViewContainer__rQnVa"
+  // settle: 300, timeout: 10_000, noMutationTimeout: 500
+} else {
+  // waitForMutation in main frame, selector: "[data-testid='split-view-view']"
+  // settle: 100, timeout: 8_000, noMutationTimeout: 200
+}
+```
+
+---
+
+### 3. Stale iframe execution context recovery — Salesforce SPA navigation to split-view
+
+**Files:**
+- `extension/shared/step-executor/index.js` → `resolveContext` function
+- `extension/shared/selector-resolver.js` → `waitForSelector` function
+- `extension/shared/step-executor/wait.js` → `execWaitForElement` function
+
+**Rule:** When resolving an iframe's execution context, the obtained `contextId` must be validated alive with a no-op `Runtime.evaluate({expression:"1"})` before use. If stale, it must re-poll `frameContextMap` for up to 3 seconds for a live replacement. Additionally, `waitForSelector` must accept an optional `frameInfo = { frameContextMap, frameId }` parameter and, on `"Cannot find context"` errors during polling, refresh `currentContextId` from `frameContextMap` instead of treating it as a debugger detach.
+
+**Why it must not change:** When the Salesforce SPA navigates to the split-view page from another Salesforce page (e.g. from a Case view), Chrome registers the iframe's blank-document context first (fast, milliseconds after iframe creation), then destroys it and registers the real content context once the iframe loads its React app. Without this fix, `resolveContext` grabs the blank-document context, it becomes stale within milliseconds, and every subsequent `Runtime.evaluate` inside `waitForSelector` throws `"Cannot find context with specified id"`. This triggers the fast-fail path (designed for debugger detaches) and the step fails immediately. The fix works transparently: when starting FROM the split-view page (stable context), the no-op eval succeeds instantly and nothing changes.
+
+**What must stay:**
+- The `Runtime.evaluate({expression:"1"})` liveness check in `resolveContext`, with the 3s re-poll loop.
+- `resolveContext` returning `frameId` alongside `contextId` and `iframeOffset`.
+- `waitForSelector`'s `frameInfo` parameter and the `"Cannot find context"` catch branch that refreshes `currentContextId`.
+- `execWaitForElement`'s `frameInfo` parameter and pass-through to `waitForSelector`.
+- `executeStep`'s `waitForElement` case passing `frameId ? { frameContextMap, frameId } : null`.
+
+---
+
 ## Loading the extension
 
 1. Go to `chrome://extensions`

@@ -59,9 +59,12 @@ export async function waitForSelector(
   tabId,
   contextId,
   cdp,
-  timeoutMs = STEP_TIMEOUT_MS
+  timeoutMs = STEP_TIMEOUT_MS,
+  frameInfo = null  // optional: { frameContextMap, frameId } — enables stale-context recovery
 ) {
   const deadline = Date.now() + timeoutMs;
+  // mutable — refreshed inline if the iframe's execution context is replaced mid-poll
+  let currentContextId = contextId;
   const normalized = normalizeSelectors(selectors);
   // Pre-filter CSS candidates for the CDP fallback (no aria/xpath/pierce/text prefixes or >>> chains)
   const cssCandidates = normalized.filter(
@@ -82,11 +85,22 @@ export async function waitForSelector(
 
     for (const candidate of normalized) {
       try {
-        const result = await tryResolve(candidate[0], tabId, contextId, cdp);
+        const result = await tryResolve(candidate[0], tabId, currentContextId, cdp);
         if (result) return result;
         allPrimaryThrew = false; // null → CDP works, element just not there yet
       } catch (err) {
-        lastCdpErr = err;
+        // "Cannot find context" means the iframe's execution context was replaced
+        // (blank-document context destroyed when the iframe loaded its real src URL).
+        // This is NOT a debugger detach — refresh contextId from frameContextMap and retry.
+        if (frameInfo && err.message?.includes("Cannot find context")) {
+          const fresh = frameInfo.frameContextMap.get(frameInfo.frameId);
+          if (fresh && fresh !== currentContextId) {
+            currentContextId = fresh;
+          }
+          allPrimaryThrew = false;
+        } else {
+          lastCdpErr = err;
+        }
       }
     }
     // Fallback: native CDP DOM.querySelector — bypasses framework-patched querySelectorAll
@@ -107,7 +121,7 @@ export async function waitForSelector(
     // coordinates. resolveSelector (used for clicks) still requires non-zero dimensions.
     for (const candidate of cssCandidates) {
       try {
-        const present = await checkPresence(candidate[0], tabId, contextId, cdp);
+        const present = await checkPresence(candidate[0], tabId, currentContextId, cdp);
         if (present) {
           console.log(`[waitForSelector] found via presence-only check: ${candidate[0]}`);
           return { x: 0, y: 0, width: 0, height: 0 };
