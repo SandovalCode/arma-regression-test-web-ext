@@ -854,7 +854,9 @@
           frame: getFrameIndex(),
           elementValue: elementValue.slice(0, 200),
           valuePattern: inferValuePattern(elementValue),
-          elementTag: el.tagName.toLowerCase()
+          elementTag: el.tagName.toLowerCase(),
+          elementInputType: el.tagName === "INPUT" ? (el.type?.toLowerCase() ?? "text") : null,
+          elementChecked: el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio") ? el.checked : null
         }
       });
     } catch (e) {

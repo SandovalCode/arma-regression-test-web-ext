@@ -129,7 +129,8 @@ export async function runRecording(recording, tabId, stepDelay) {
           (step.type === "click" ||
             step.type === "doubleClick" ||
             step.type === "change" ||
-            step.type === "selectOption") &&
+            step.type === "selectOption" ||
+            step.type === "assertElement") &&
           step.selectors?.length
         ) {
           // Ensure any in-progress re-attachment is done before issuing CDP calls.

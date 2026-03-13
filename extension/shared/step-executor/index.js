@@ -13,6 +13,7 @@ import {
   execPasteVariableAtReplaying
 } from "./clipboard.js";
 import { sleep } from "./helpers.js";
+import { execAssertElement, execAssertNotPresent } from "./assert.js";
 
 /**
  * Execute a single recording step using the Chrome DevTools Protocol.
@@ -97,6 +98,10 @@ export async function executeStep(
       );
     case "wait":
       return sleep(Math.max(0, step.duration ?? 0));
+    case "assertElement":
+      return execAssertElement(step, tabId, contextId, cdp);
+    case "assertNotPresent":
+      return execAssertNotPresent(step, tabId, contextId, cdp);
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
       console.warn(

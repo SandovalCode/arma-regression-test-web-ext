@@ -175,6 +175,10 @@ header h1 {
   border-color: var(--muted);
   color: var(--text);
 }
+.hm-btn--full {
+  width: 100%;
+  text-align: left;
+}
 
 /* ── Hamburger site nav badges ── */
 .hm-badge {
@@ -443,6 +447,136 @@ input[type="text"]::placeholder {
 .record-actions {
   display: flex;
   gap: 8px;
+}
+
+.btn-assertions {
+  margin-right: auto;
+}
+
+.assert-html-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.assert-html-input:focus {
+  border-color: var(--accent);
+}
+
+.assert-new-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.assert-new-toggle:hover {
+  border-color: var(--muted);
+  background: var(--hover-bg, rgba(255,255,255,0.04));
+}
+.assert-new-toggle-icon {
+  font-size: 10px;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.assert-new-toggle[aria-expanded="true"] .assert-new-toggle-icon {
+  transform: rotate(90deg);
+}
+
+.assert-new-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.assert-new-form.hidden {
+  display: none;
+}
+
+.assert-form-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.assert-form-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 10px 0 8px;
+}
+
+.assert-library-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 0 6px;
+}
+
+.assert-library-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin-bottom: 2px;
+}
+
+.assert-library-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.assert-library-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.assert-library-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assert-library-selector {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assert-library-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 /* ── List Section ── */

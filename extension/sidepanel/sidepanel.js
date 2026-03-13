@@ -74,6 +74,16 @@ const waitTimeOverlay = $("wait-time-overlay");
 const waitDurationInput = $("wait-duration");
 const btnWaitSave = $("btn-wait-save");
 const btnWaitCancel = $("btn-wait-cancel");
+const assertOverlay = $("assert-overlay");
+const assertTitleInput = $("assert-title");
+const assertHtmlInput = $("assert-html");
+const btnAssertAdd = $("btn-assert-add");
+const btnAssertCancel = $("btn-assert-cancel");
+const btnAssertions = $("btn-assertions");
+const assertLibraryList = $("assert-library-list");
+const assertLibraryEmpty = $("assert-library-empty");
+const btnAssertNewToggle = $("btn-assert-new-toggle");
+const assertNewForm = $("assert-new-form");
 
 // ── Theme toggle ───────────────────────────────────────────────────────────────
 function applyTheme(light) {
@@ -105,6 +115,12 @@ document.addEventListener("click", (e) => {
     hamburgerMenu.classList.add("hidden");
     btnHamburger.setAttribute("aria-expanded", "false");
   }
+});
+
+$("btn-hamburger-assertions").addEventListener("click", () => {
+  hamburgerMenu.classList.add("hidden");
+  btnHamburger.setAttribute("aria-expanded", "false");
+  openAssertDialog();
 });
 
 // ── Step delay (speed badges) ──────────────────────────────────────────────────
@@ -337,7 +353,9 @@ const STEP_ICONS = {
   setViewport: "🖥️",
   copyVariable: "📌",
   pasteVariable: "📋",
-  wait: "⏱️"
+  wait: "⏱️",
+  assertElement: "✔️",
+  assertNotPresent: "🚫"
 };
 
 function stepLabel(step) {
@@ -402,6 +420,26 @@ function stepLabel(step) {
       return { main: `Paste "${step.variableName}"`, sub: selectorHint };
     case "wait":
       return { main: `Wait ${(step.duration / 1000).toFixed(1)}s`, sub: "" };
+    case "assertElement": {
+      const tag = step.elementTag ?? "";
+      const inputType = step.elementInputType;
+      const isCheckable = inputType === "checkbox" || inputType === "radio";
+      if (isCheckable) {
+        return {
+          main: `Assert ${inputType}`,
+          sub: step.expectedChecked ? "checked" : "unchecked"
+        };
+      }
+      return {
+        main: `Assert ${tag || "element"}`,
+        sub: `"${String(step.expectedValue ?? "").slice(0, 30)}"`
+      };
+    }
+    case "assertNotPresent":
+      return {
+        main: "Assert absent",
+        sub: step.title || step.selector || ""
+      };
     default:
       return { main: step.type, sub: "" };
   }
@@ -856,6 +894,30 @@ chrome.runtime.onMessage.addListener((msg) => {
       waitDurationInput.focus();
       break;
 
+    case MSG.SHOW_ASSERT_DIALOG: {
+      // Auto-save immediately from context menu "Add absence check"
+      const cssSelector = pickCssSelector(payload.selectors ?? []);
+      (async () => {
+        if (cssSelector) {
+          const { selector, textContent } = parseAssertInput(cssSelector);
+          const entry = {
+            id: crypto.randomUUID(),
+            title: payload.textContent?.slice(0, 60) ?? "",
+            selector,
+            textContent,
+            originalHtml: cssSelector,
+            createdAt: new Date().toISOString()
+          };
+          await saveAssertToLibrary(entry);
+        }
+        // Open dialog with library visible, form collapsed
+        setAssertFormOpen(false);
+        await renderAssertLibrary();
+        assertOverlay.classList.remove("hidden");
+      })();
+      break;
+    }
+
     case MSG.DEBUG_PAUSE: {
       const { stepIndex, total, stepType } = payload;
       debugPanelText.textContent = `Paused after step ${stepIndex + 1} of ${total} (${stepType})`;
@@ -985,6 +1047,174 @@ btnWaitCancel.addEventListener("click", () => {
 waitDurationInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") btnWaitSave.click();
   if (e.key === "Escape") btnWaitCancel.click();
+});
+
+// ── Absence checks library ──────────────────────────────────────────────────────
+
+async function loadAssertLibrary() {
+  const { assertionLibrary = [] } = await chrome.storage.local.get("assertionLibrary").catch(() => ({}));
+  return assertionLibrary;
+}
+
+async function saveAssertToLibrary(entry) {
+  const lib = await loadAssertLibrary();
+  lib.push(entry);
+  await chrome.storage.local.set({ assertionLibrary: lib });
+}
+
+async function deleteAssertFromLibrary(id) {
+  const lib = await loadAssertLibrary();
+  await chrome.storage.local.set({ assertionLibrary: lib.filter((a) => a.id !== id) });
+}
+
+async function renderAssertLibrary() {
+  const lib = await loadAssertLibrary();
+  assertLibraryList.innerHTML = "";
+  assertLibraryEmpty.classList.toggle("hidden", lib.length > 0);
+
+  for (const entry of lib) {
+    const li = document.createElement("li");
+    li.className = "assert-library-item";
+    li.innerHTML = `
+      <div class="assert-library-item-info">
+        <span class="assert-library-title">${escapeHtml(entry.title || entry.selector)}</span>
+        <span class="assert-library-selector">${escapeHtml(entry.selector)}</span>
+      </div>
+      <div class="assert-library-actions">
+        <button class="btn btn-primary btn-sm btn-assert-use" data-id="${escapeHtml(entry.id)}">Add to test</button>
+        <button class="btn btn-ghost btn-sm btn-assert-delete" data-id="${escapeHtml(entry.id)}" title="Delete">×</button>
+      </div>
+    `;
+    assertLibraryList.appendChild(li);
+  }
+}
+
+// Picks the most stable plain CSS selector from the selectors array
+// (skips aria/, xpath/, text/, pierce/ prefixed entries).
+function pickCssSelector(selectors) {
+  const flat = (selectors ?? []).flat();
+  return flat.find((s) => s && !/^(aria|xpath|text|pierce)\//.test(s)) ?? flat[0] ?? "";
+}
+
+// Parse an HTML snippet or plain CSS selector into { selector, textContent }.
+function parseAssertInput(raw) {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("<")) {
+    try {
+      const doc = new DOMParser().parseFromString(trimmed, "text/html");
+      const el = doc.body.firstElementChild;
+      if (el) {
+        const tag = el.tagName.toLowerCase();
+        const id = el.id ? `#${CSS.escape(el.id)}` : "";
+        const classes = Array.from(el.classList)
+          .map((c) => `.${CSS.escape(c)}`)
+          .join("");
+        const selector = tag + id + classes || tag;
+        const textContent = el.textContent?.trim() ?? "";
+        return { selector, textContent };
+      }
+    } catch (_) {
+      // fall through
+    }
+  }
+  return { selector: trimmed, textContent: "" };
+}
+
+async function addAssertStepToRecording(entry) {
+  const step = {
+    type: "assertNotPresent",
+    target: "main",
+    title: entry.title,
+    selector: entry.selector,
+    textContent: entry.textContent,
+    originalHtml: entry.originalHtml ?? ""
+  };
+  await send(MSG.ADD_RECORDING_STEP, { step });
+  state.recordingStepCount++;
+  stepCountEl.textContent = state.recordingStepCount;
+  appendFeedItem(step);
+}
+
+// ── Assertions dialog event listeners ──────────────────────────────────────────
+
+function setAssertFormOpen(open) {
+  assertNewForm.classList.toggle("hidden", !open);
+  btnAssertNewToggle.setAttribute("aria-expanded", String(open));
+}
+
+btnAssertNewToggle.addEventListener("click", () => {
+  const isOpen = btnAssertNewToggle.getAttribute("aria-expanded") === "true";
+  setAssertFormOpen(!isOpen);
+  if (!isOpen) assertTitleInput.focus();
+});
+
+function openAssertDialog(prefill = {}) {
+  assertTitleInput.value = prefill.title ?? "";
+  assertHtmlInput.value = prefill.originalHtml ?? "";
+  // Auto-expand the form when pre-filled from a right-click
+  const hasPrefill = !!(prefill.originalHtml || prefill.title);
+  setAssertFormOpen(hasPrefill);
+  renderAssertLibrary();
+  assertOverlay.classList.remove("hidden");
+  if (hasPrefill) assertTitleInput.focus();
+}
+
+btnAssertions.addEventListener("click", () => openAssertDialog());
+
+// Delegated click on library list — "Add to test" or "×" delete
+assertLibraryList.addEventListener("click", async (e) => {
+  const useBtn = e.target.closest(".btn-assert-use");
+  const delBtn = e.target.closest(".btn-assert-delete");
+
+  if (useBtn) {
+    const lib = await loadAssertLibrary();
+    const entry = lib.find((a) => a.id === useBtn.dataset.id);
+    if (!entry) return;
+    await addAssertStepToRecording(entry);
+    assertOverlay.classList.add("hidden");
+  }
+
+  if (delBtn) {
+    await deleteAssertFromLibrary(delBtn.dataset.id);
+    renderAssertLibrary();
+  }
+});
+
+btnAssertAdd.addEventListener("click", async () => {
+  const raw = assertHtmlInput.value.trim();
+  if (!raw) {
+    assertHtmlInput.focus();
+    return;
+  }
+
+  const { selector, textContent } = parseAssertInput(raw);
+  const entry = {
+    id: crypto.randomUUID(),
+    title: assertTitleInput.value.trim(),
+    selector,
+    textContent,
+    originalHtml: raw,
+    createdAt: new Date().toISOString()
+  };
+
+  await saveAssertToLibrary(entry);
+  // Clear form, collapse it, and refresh library
+  assertTitleInput.value = "";
+  assertHtmlInput.value = "";
+  setAssertFormOpen(false);
+  renderAssertLibrary();
+});
+
+btnAssertCancel.addEventListener("click", () => {
+  assertOverlay.classList.add("hidden");
+});
+
+assertTitleInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") btnAssertCancel.click();
+});
+
+assertHtmlInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") btnAssertCancel.click();
 });
 
 // ── Edit overlay event listeners ───────────────────────────────────────────────

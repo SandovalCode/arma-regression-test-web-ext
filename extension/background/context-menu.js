@@ -35,9 +35,41 @@ chrome.contextMenus.removeAll(() => {
     title: "Wait for element (auto-refresh)",
     contexts: ["all"]
   });
+  chrome.contextMenus.create({
+    id: "record-assert-value",
+    title: "Assert value",
+    contexts: ["all"]
+  });
+  chrome.contextMenus.create({
+    id: "record-capture-absent",
+    title: "Add absence check",
+    contexts: ["all"]
+  });
 });
 
 chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
+  // "Add absence check" works at any time — not gated on an active recording.
+  if (_info.menuItemId === "record-capture-absent") {
+    let elInfo = contextMenu.lastEl;
+    if (!elInfo) {
+      const stored = await chrome.storage.session
+        .get("lastContextMenuEl")
+        .catch(console.error);
+      elInfo = stored?.lastContextMenuEl ?? null;
+    }
+    if (!elInfo) return;
+    contextMenu.lastEl = null;
+    chrome.storage.session.remove("lastContextMenuEl").catch(console.error);
+    broadcast(MSG.SHOW_ASSERT_DIALOG, {
+      selectors: elInfo.selectors,
+      textContent: elInfo.elementValue ?? "",
+      elementTag: elInfo.elementTag ?? "",
+      frame: elInfo.frame ?? []
+    });
+    return;
+  }
+
+  // All other items require an active recording on the correct tab.
   if (!recordingState.active || tab?.id !== recordingState.tabId) return;
   if (
     ![
@@ -46,7 +78,8 @@ chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
       "record-variable",
       "record-paste-variable",
       "record-wait-time",
-      "record-wait-refresh"
+      "record-wait-refresh",
+      "record-assert-value"
     ].includes(_info.menuItemId)
   )
     return;
@@ -99,6 +132,24 @@ chrome.contextMenus.onClicked.addListener(async (_info, tab) => {
       frame: elInfo.frame ?? [],
       variables: availableVars
     });
+    return;
+  }
+
+  if (_info.menuItemId === "record-assert-value") {
+    const isCheckable =
+      elInfo.elementInputType === "checkbox" || elInfo.elementInputType === "radio";
+    const step = {
+      type: "assertElement",
+      target: "main",
+      selectors: elInfo.selectors,
+      elementTag: elInfo.elementTag ?? "",
+      elementInputType: elInfo.elementInputType ?? null,
+      expectedValue: elInfo.elementValue ?? "",
+      ...(isCheckable ? { expectedChecked: elInfo.elementChecked ?? false } : {}),
+      ...(elInfo.frame?.length ? { frame: elInfo.frame } : {})
+    };
+    recordingState.steps.push(step);
+    broadcast(MSG.RECORD_STEP, { step });
     return;
   }
 

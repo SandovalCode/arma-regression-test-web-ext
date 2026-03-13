@@ -51,6 +51,8 @@
         <button id="btn-theme" class="hm-btn" title="Toggle theme">🌙</button>
       </div>
       <div class="hamburger-divider"></div>
+      <button id="btn-hamburger-assertions" class="hm-btn hm-btn--full">🚫 Absence checks</button>
+      <div class="hamburger-divider"></div>
       <div class="hamburger-slower-label">Slower</div>
       <div class="hamburger-row">
         <button class="speed-badge" data-delay="500">.5s</button>
@@ -77,6 +79,7 @@
         <ul id="record-feed" class="record-feed"></ul>
 
         <div class="record-actions">
+          <button id="btn-assertions" class="btn btn-ghost btn-sm btn-assertions">Assertions</button>
           <button id="btn-stop-record" class="btn btn-primary">Save</button>
           <button id="btn-cancel-record" class="btn btn-ghost">Cancel</button>
         </div>
@@ -238,6 +241,48 @@
             Save changes
           </button>
           <button id="btn-edit-cancel" class="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Assert Not Present Dialog ── -->
+    <div id="assert-overlay" class="hidden overlay">
+      <div class="dialog dialog-wide">
+        <h3>Absence checks</h3>
+
+        <!-- Collapsible new check form -->
+        <button id="btn-assert-new-toggle" class="assert-new-toggle" aria-expanded="false">
+          <span class="assert-new-toggle-icon">▸</span> New check
+        </button>
+        <div id="assert-new-form" class="assert-new-form hidden">
+          <input
+            id="assert-title"
+            type="text"
+            placeholder="Label, e.g. error dialog"
+            maxlength="80"
+          />
+          <label class="edit-label" style="margin-top:6px">HTML snippet or CSS selector</label>
+          <textarea
+            id="assert-html"
+            class="assert-html-input"
+            placeholder='e.g. <div class="foo">Some text</div>'
+            rows="3"
+          ></textarea>
+          <div class="assert-form-save-row">
+            <button id="btn-assert-add" class="btn btn-primary btn-sm">Save to library</button>
+          </div>
+        </div>
+
+        <div class="assert-form-divider"></div>
+
+        <!-- Saved library -->
+        <p id="assert-library-empty" class="assert-library-empty hidden">
+          No saved checks yet. Add one above.
+        </p>
+        <ul id="assert-library-list" class="assert-library-list"></ul>
+
+        <div class="dialog-actions">
+          <button id="btn-assert-cancel" class="btn btn-ghost">Close</button>
         </div>
       </div>
     </div>

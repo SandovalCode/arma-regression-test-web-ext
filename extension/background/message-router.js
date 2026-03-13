@@ -279,16 +279,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
         // ── Called from content script during recording ──
         case MSG.STORE_CONTEXT_EL:
-          // Content script sends the right-clicked element info here so the
-          // context menu handler can use it without a fragile executeScript call.
-          // Also persisted to session storage so it survives a SW restart between
-          // the right-click and the moment the user selects a context menu item.
-          if (recordingState.active) {
-            contextMenu.lastEl = payload;
-            chrome.storage.session
-              .set({ lastContextMenuEl: payload })
-              .catch(console.error);
-          }
+          // Always store the right-clicked element — both for active recordings and
+          // for "Add absence check" which is available outside of recording mode.
+          contextMenu.lastEl = payload;
+          chrome.storage.session
+            .set({ lastContextMenuEl: payload })
+            .catch(console.error);
           sendResponse({ ok: true }); // close the port immediately (fire-and-forget)
           break;
 
