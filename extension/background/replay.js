@@ -275,29 +275,54 @@ export async function runRecording(recording, tabId, stepDelay) {
         //   }
         // }
 
-        // Auto: after any click, watch for split-view-view wizard panels to finish mutating.
-        // On pages without those panels the observer exits instantly (no overhead).
-        // On wizard pages with unrelated clicks, exits after 200ms if no mutations start.
+        // Auto: after any click, watch for wizard panels to finish mutating.
+        // For steps inside an iframe (React wizard pages), run the mutation wait in the
+        // iframe's own execution context so the split-view container selector can be found.
+        // On pages without wizard panels the observer exits instantly (no overhead).
         if (
           (step.type === "click" || step.type === "doubleClick") &&
           !replayState.aborted
         ) {
-          await executeStep(
-            {
-              type: "waitForMutation",
-              selector: "[data-testid='split-view-view']",
-              settle: 100,
-              timeout: 8_000,
-              noMutationTimeout: 200
-            },
-            tabId,
-            frameContextMap,
-            clipboardVars,
-            cdp,
-            variables
-          ).catch((err) =>
-            console.warn("[Replay] waitForMutation failed (proceeding):", err.message)
-          );
+          if (step.frame && step.frame.length > 0) {
+            // React wizard inside iframe: watch the split-view container for DOM settlement.
+            // noMutationTimeout 500ms gives the React re-render cycle time to start before
+            // we decide no mutations are coming.
+            await executeStep(
+              {
+                type: "waitForMutation",
+                selector: ".split-view-container, .allotment-module_splitViewContainer__rQnVa",
+                settle: 300,
+                timeout: 10_000,
+                noMutationTimeout: 500,
+                frame: step.frame
+              },
+              tabId,
+              frameContextMap,
+              clipboardVars,
+              cdp,
+              variables
+            ).catch((err) =>
+              console.warn("[Replay] waitForMutation (iframe wizard) failed (proceeding):", err.message)
+            );
+          } else {
+            // Main frame: existing split-view-view selector, fast exit on non-wizard pages.
+            await executeStep(
+              {
+                type: "waitForMutation",
+                selector: "[data-testid='split-view-view']",
+                settle: 100,
+                timeout: 8_000,
+                noMutationTimeout: 200
+              },
+              tabId,
+              frameContextMap,
+              clipboardVars,
+              cdp,
+              variables
+            ).catch((err) =>
+              console.warn("[Replay] waitForMutation failed (proceeding):", err.message)
+            );
+          }
         }
 
         // Auto: waitForPageLoad after navigate or selectOption (which may trigger navigation)
