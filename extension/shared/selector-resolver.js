@@ -430,11 +430,26 @@ async function evalExpr(expression, tabId, contextId, cdp) {
 }
 
 // ── DOM-presence check (no visibility or bounding-rect requirement) ────────────
-// Returns true if document.querySelector finds the element regardless of its size.
-// Used by waitForSelector as a last-resort fallback for CSS-hidden form controls.
+// Returns true if document.querySelector finds the element regardless of its size,
+// UNLESS the element is hidden via display:none.
+//
+// Used by waitForSelector as a last-resort fallback for CSS-hidden form controls
+// (e.g. radio/checkbox inputs with opacity:0 or width:0/height:0 replaced by
+// custom CSS UI). These elements are interactive even though invisible.
+//
+// display:none is explicitly excluded: it means the element is fully hidden by the
+// page (e.g. a PHP multi-step wizard where the next section isn't shown yet).
+// Returning true for display:none would cause execClick to fire at (0,0) coords
+// instead of waiting for the element to actually become visible.
 
 async function checkPresence(selectorStr, tabId, contextId, cdp) {
-  const expression = `document.querySelector(${JSON.stringify(selectorStr)}) !== null`;
+  const expression = `(function() {
+    const el = document.querySelector(${JSON.stringify(selectorStr)});
+    if (!el) return false;
+    // display:none means the page has intentionally hidden this element — keep waiting
+    if (window.getComputedStyle(el).display === 'none') return false;
+    return true;
+  })()`;
   const params = { expression, returnByValue: true };
   if (contextId) params.contextId = contextId;
   // Let CDP errors (e.g. detached debugger) propagate — the caller uses thrown
