@@ -391,6 +391,11 @@ export async function runRecording(recording, tabId, stepDelay) {
           error: errorMsg
         });
 
+        // Assertion failures: continue so all consecutive assertions run.
+        // Any other step type is fatal — stop immediately.
+        const isAssertion = step.type === "assertNotPresent" || step.type === "assertElement";
+        if (isAssertion) continue;
+
         // Save result and exit
         const result = {
           runId,
@@ -417,8 +422,10 @@ export async function runRecording(recording, tabId, stepDelay) {
       }
     }
 
-    // All steps done (or aborted)
-    const passed = !replayState.aborted;
+    // All steps done (or aborted). Check for any deferred assertion failures.
+    const assertionFailures = stepResults.filter((s) => s.status === "failed");
+    const passed = !replayState.aborted && assertionFailures.length === 0;
+    const firstFailure = assertionFailures[0] ?? null;
     const result = {
       runId,
       recordingId: recording.id,
@@ -428,7 +435,9 @@ export async function runRecording(recording, tabId, stepDelay) {
       passed,
       totalSteps: recording.steps.length,
       completedSteps: stepResults.filter((s) => s.status === "passed").length,
-      failedStep: null,
+      failedStep: firstFailure
+        ? { index: firstFailure.index, type: firstFailure.type, error: firstFailure.error }
+        : null,
       stepResults
     };
     await appendRunResult(result);
@@ -436,7 +445,7 @@ export async function runRecording(recording, tabId, stepDelay) {
       recordingId: recording.id,
       runId,
       passed,
-      failedStep: null
+      failedStep: result.failedStep
     });
     return result;
   } finally {

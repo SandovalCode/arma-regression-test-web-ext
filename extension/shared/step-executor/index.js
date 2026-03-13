@@ -101,7 +101,7 @@ export async function executeStep(
     case "assertElement":
       return execAssertElement(step, tabId, contextId, cdp);
     case "assertNotPresent":
-      return execAssertNotPresent(step, tabId, contextId, cdp);
+      return execAssertNotPresent(step, tabId, contextId, cdp, frameContextMap);
     default:
       // Unknown step types are silently skipped so new recorder formats don't crash
       console.warn(

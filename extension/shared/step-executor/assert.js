@@ -11,31 +11,72 @@
  *   originalHtml: string, // the raw input — stored for display only
  * }
  */
-export async function execAssertNotPresent(step, tabId, contextId, cdp) {
+export async function execAssertNotPresent(step, tabId, contextId, cdp, frameContextMap = new Map()) {
   const selector = step.selector ?? "";
   const textContent = (step.textContent ?? "").trim();
   const label = step.title ? `"${step.title}"` : `selector "${selector}"`;
 
   if (!selector) throw new Error(`assertNotPresent: no selector provided for ${label}`);
 
-  const expression = textContent
-    ? `(function () {
-        var els = document.querySelectorAll(${JSON.stringify(selector)});
-        var needle = ${JSON.stringify(textContent)};
-        return Array.from(els).some(function (el) {
-          return (el.textContent || "").trim() === needle;
-        });
-      })()`
-    : `document.querySelector(${JSON.stringify(selector)}) !== null`;
+  // Search the full page: main DOM + all shadow roots recursively.
+  // Also checks document.documentElement.outerHTML as a raw string fallback.
+  const expression = `(function () {
+    var selector = ${JSON.stringify(selector)};
+    var needle = ${JSON.stringify(textContent)};
 
-  const params = { expression, returnByValue: true };
-  if (contextId) params.contextId = contextId;
+    function queryAll(root) {
+      var found = [];
+      try { found = Array.from(root.querySelectorAll(selector)); } catch (e) {}
+      try {
+        var hosts = root.querySelectorAll("*");
+        for (var i = 0; i < hosts.length; i++) {
+          if (hosts[i].shadowRoot) found = found.concat(queryAll(hosts[i].shadowRoot));
+        }
+      } catch (e) {}
+      return found;
+    }
 
-  const res = await cdp(tabId, "Runtime.evaluate", params);
-  const found = res?.result?.value === true;
+    var elements = queryAll(document);
+    if (elements.length > 0) {
+      if (!needle) return true;
+      if (elements.some(function (el) { return (el.textContent || "").trim() === needle; })) return true;
+    }
 
-  if (found) {
-    throw new Error(`Assertion failed: element ${label} was found but should not be present on the page`);
+    try {
+      var html = document.documentElement ? document.documentElement.outerHTML : "";
+      if (html && selector && !selector.includes(" ") && !selector.includes(">")) {
+        var plain = selector.replace(/^[a-z][a-z0-9-]*/, "");
+        if (plain.startsWith("#")) {
+          var id = plain.slice(1).replace(/\\.(.)/g, "$1");
+          if (html.includes('id="' + id + '"') || html.includes("id='" + id + "'")) return true;
+        }
+        var classMatches = plain.match(/\\.([^.#[\\s>~+]+)/g);
+        if (classMatches) {
+          var cls = classMatches[0].slice(1).replace(/\\.(.)/g, "$1");
+          if (html.includes('class="' + cls + '"') || html.includes(cls)) return true;
+        }
+      }
+      if (needle && html.includes(needle)) return true;
+    } catch (e) {}
+
+    return false;
+  })()`;
+
+  // Check main frame first (no contextId), then every known iframe context.
+  // assertNotPresent must pass in ALL frames — if the element appears anywhere, fail.
+  const contextsToCheck = new Set([null]);
+  if (contextId) contextsToCheck.add(contextId);
+  for (const [, ctxId] of frameContextMap) {
+    if (ctxId) contextsToCheck.add(ctxId);
+  }
+
+  for (const ctxId of contextsToCheck) {
+    const params = { expression, returnByValue: true };
+    if (ctxId) params.contextId = ctxId;
+    const res = await cdp(tabId, "Runtime.evaluate", params).catch(() => null);
+    if (res?.result?.value === true) {
+      throw new Error(`Assertion failed: element ${label} was found but should not be present on the page`);
+    }
   }
 }
 
